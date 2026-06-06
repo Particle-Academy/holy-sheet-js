@@ -1,5 +1,7 @@
 # @particle-academy/holy-sheet
 
+[![Fancy UI suite](art/fancy-ui.svg)](https://particle.academy)
+
 Zero-dependency, **isomorphic** (browser + Node) `.xlsx` writer + reader +
 formula linter for agentic document creation. The Node/TypeScript mirror of the
 PHP [`particle-academy/holy-sheet`](https://github.com/Particle-Academy/holy-sheet)
