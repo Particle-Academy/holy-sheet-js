@@ -50,3 +50,9 @@ await Agent.write(schema, "sales.xlsx");
 - `version()` → string
 
 See `docs/` for the full schema reference.
+
+---
+
+## ⭐ Star Fancy UI
+
+If this package is useful to you, a quick ⭐ on the repo really helps us build a better kit. Thank you!
