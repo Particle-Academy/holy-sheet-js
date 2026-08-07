@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.0 — 2026-08-07
+
+### Changed
+
+- **BREAKING — Node 18 is no longer supported.** `engines.node` moves from `>=18` to `>=22`.
+
+  **What you must do:** on Node 22 or newer, nothing. Note npm only *warns* on an `engines` mismatch while **pnpm fails the install**, so this surfaces differently depending on your package manager. Node 18 is end-of-life and 20 is maintenance-only.
+
+### Why
+
+These are the kit 0.5 platform floors, applied across every package at once so a consumer never has to resolve a mix. **No API changed, nothing was removed, nothing was renamed** — only what the package requires.
+
+This package is past 1.0, so a floor raise takes a **major**. Most of the suite is pre-1.0 and lands the identical change in a minor — that is semver, not a difference in how much changed.
+
 ## 1.0.0 — 2026-05-30
 
 Initial Node/TypeScript port of `particle-academy/holy-sheet` (PHP), at

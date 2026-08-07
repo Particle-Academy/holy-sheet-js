@@ -1,6 +1,6 @@
 {
   "name": "@particle-academy/holy-sheet",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Zero-dependency, isomorphic xlsx writer + reader + formula linter for agentic document creation. The Node/TypeScript mirror of the PHP particle-academy/holy-sheet (feature-parity with PHP 1.2.0).",
   "repository": {
     "type": "git",
@@ -57,7 +57,7 @@
     "vitest": "^3.2.6"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"
