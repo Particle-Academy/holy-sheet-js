@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.0.1 — 2026-08-09
+
+### Fixed
+
+- **The cross-engine parity suites now actually run in CI.** They are the
+  strongest guarantee this pair has — every OOXML part diffed byte-for-byte
+  against the PHP `holy-sheet` — and they had never executed on a runner.
+
+  Two things combined to hide it. `describe.skipIf(!HAS_PHP)` skipped silently,
+  and `ci.yml` installed Node only, so the build went green with **zero
+  cross-engine coverage**. Separately, the parity helper autoloaded the PHP
+  sources from a hard-coded `../../holy-sheet/src`, which only resolves inside
+  the `.agi` envelope — so even with PHP present, a different layout found no
+  classes.
+
+  Now: CI installs PHP 8.4 and checks out the PHP repo; the helper takes
+  `HOLY_SHEET_PHP_SRC` (falling back to the sibling path); and a missing PHP
+  **throws in CI** instead of skipping. A green build that asserts nothing is
+  worse than a red one, because nobody investigates green.
+
+  **What you must do:** nothing, unless you run these suites outside the
+  envelope — then set `HOLY_SHEET_PHP_SRC` to the PHP package's `src`.
+
 ## 2.0.0 — 2026-08-07
 
 ### Changed
