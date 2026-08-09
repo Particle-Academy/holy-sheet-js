@@ -7,7 +7,8 @@ import { Agent, unzipSync } from "../src";
 
 // Cross-engine parity: the PHP holy-sheet and this TS port should emit
 // byte-identical OOXML parts for the same input (timestamps pinned via meta).
-// Skips automatically when `php` isn't on PATH (e.g. CI without PHP).
+// Skips when `php` isn't on PATH LOCALLY; in CI a missing php THROWS instead,
+// because a skip there is a green build with zero cross-engine coverage.
 
 const PHP_SCRIPT = join(__dirname, "..", "scripts", "php-tobytes.php");
 
@@ -28,6 +29,38 @@ function phpAvailable(): boolean {
 const META = { creator: "Parity", created: "2024-01-01T00:00:00Z" };
 
 const SCHEMAS: Record<string, unknown> = {
+  /**
+   * The numeric hazards from the polyglot plan's §5, as an actual PARITY case.
+   *
+   * tests/numeric.test.ts and the PHP NumericTest pin these per engine, but two
+   * tables that happen to agree are not a cross-engine guarantee -- the diff
+   * below is. Until this fixture existed the parity suites contained no value
+   * that exercised any of them, which is exactly why three of these shipped
+   * divergent: the suites diff whole OOXML parts, so they only catch what some
+   * fixture happens to contain.
+   *
+   * Each row was a real disagreement:
+   *   "1e5"    PHP 100000            JS 1                   (parseInt stops at 'e')
+   *   "2e-3"   PHP 0                 JS 0.002               (dot test -> (int))
+   *   "1e21"   PHP 9223372036854775807  JS 1                (PHP_INT_MAX clamp)
+   *   1e21     PHP 1000...0          JS "1e+21"             (invalid <v>)
+   *   1e300    PHP exact expansion   JS "1e+3"              (trim ate the exponent)
+   */
+  numericHazards: {
+    meta: META,
+    sheets: [
+      {
+        name: "Numbers",
+        rows: [
+          ["exponent strings", "1e5", "1E5", "1.5e3", "2e-3"],
+          ["magnitude past int range", "1e21", "99999999999999999999"],
+          ["large floats", 1e21, 1e300],
+          ["small + signed", 0.1, 1 / 3, -2.25, -0],
+          ["zero in optional positions", 0, "0", "007", ".5"],
+        ],
+      },
+    ],
+  },
   sparse: {
     meta: META,
     sheets: [

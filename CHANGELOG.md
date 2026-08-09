@@ -1,5 +1,58 @@
 # Changelog
 
+## 2.1.0 — 2026-08-09
+
+### Fixed
+
+- **`1e300` was written to the sheet as `1e+3`.** The worst bug in this package's
+  history, and it never threw. `toFixed` switches to exponential notation at
+  1e21, and the trailing-zero strip then chewed the EXPONENT rather than a
+  fraction:
+
+  ```
+  (1e300).toFixed(14)         === "1e+300"
+  "1e+300".replace(/0+$/, "") === "1e+3"
+  ```
+
+  So a cell holding 1e300 was written holding 1000. Not a crash, not invalid
+  XML — a different number, in a file someone opens later and believes.
+
+- **`1e21` and above were written as `<v>1e+21</v>`**, which is not valid cell
+  content. This had a second cause the first fix did not reach: the writer only
+  called `formatFloat` for NON-integers, and `Number.isInteger(1e21)` is `true`,
+  so it took a `String(v)` branch. Mirroring PHP's `is_float(...)` test leaks —
+  a PHP int never stringifies exponentially, an integral JS double does.
+
+- **Numeric strings lost their exponent.** `numericStringToNumber` used
+  `parseInt` when the string had no `.`, and `parseInt` stops at the `e`:
+
+  | input | was | now |
+  |---|---|---|
+  | `"1e5"` | `1` | `100000` |
+  | `"1E5"` | `1` | `100000` |
+  | `"2e-3"` | `2` | `0.002` |
+  | `"1e21"` | `1` | `1e21` |
+
+  It is now `Number(v)` — which is what `FormulaLinter` already used for the
+  same job, so the two disagreed with each other as well as with PHP.
+
+- **`NaN` and `Infinity` were written into cells.** Both now write `0`, matching
+  the PHP twin.
+
+### Added
+
+- A `numericHazards` case in the cross-engine parity fixtures. The unit tables on
+  both sides were green while the engines still disagreed on `1e21`; only the
+  byte-for-byte diff caught it. Numbers are now a parity *case*, not a
+  convention.
+
+### Changed
+
+- **BREAKING in effect, though the API is identical:** values listed above now
+  serialize differently, because they were wrong. If you have a golden xlsx
+  containing an exponent-notation string, a value ≥ 1e21, or `NaN`, regenerate
+  it. Anything below 1e21 with no exponent string is byte-identical to 2.0.2.
+
 ## 2.0.2 — 2026-08-09
 
 ### Fixed

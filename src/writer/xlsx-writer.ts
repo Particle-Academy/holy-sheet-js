@@ -219,7 +219,19 @@ export class XlsxWriter {
 
     let v: string;
     if (typeof cell.value === "number") {
-      v = Number.isInteger(cell.value) ? String(cell.value) : formatFloat(cell.value);
+      // This mirrors PHP's `is_float($v) ? number_format(...) : (string) $v`,
+      // but the mirror leaks: a PHP int never stringifies exponentially, while
+      // in JS an INTEGER-VALUED double does above 1e21 — `String(1e21)` is
+      // "1e+21" and `String(1e300)` is "1e+300". Both are integers by
+      // `Number.isInteger`, so they took the String() branch and went into the
+      // sheet as `<v>1e+21</v>`, which is not valid cell content.
+      //
+      // formatFloat handles that range exactly (via BigInt) and also maps
+      // NaN/Infinity — neither of which is an integer — to 0.
+      v =
+        Number.isInteger(cell.value) && Math.abs(cell.value) < 1e21
+          ? String(cell.value)
+          : formatFloat(cell.value);
     } else {
       v = String(cell.value);
     }
