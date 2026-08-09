@@ -18,6 +18,24 @@ jobs:
         with:
           node-version: "22"
 
+      # PHP and the PHP holy-sheet, because tests/parity.test.ts and
+      # tests/reader-parity.test.ts diff this port against it byte-for-byte —
+      # the strongest guarantee this pair has. Until now CI installed Node only,
+      # so `skipIf(!HAS_PHP)` quietly skipped both suites and the build went
+      # green with ZERO cross-engine coverage. They now throw in CI instead of
+      # skipping, so forgetting this step fails loudly rather than silently.
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          coverage: none
+          extensions: mbstring, zip
+
+      - name: Check out the PHP holy-sheet
+        uses: actions/checkout@v4
+        with:
+          repository: Particle-Academy/holy-sheet
+          path: .php-holy-sheet
+
       - name: Install
         run: npm install --no-audit --no-fund
 
@@ -26,6 +44,11 @@ jobs:
 
       - name: Test
         run: npm test
+        env:
+          # The parity helper autoloads the PHP sources from here. It used to
+          # hard-code ../../holy-sheet/src, which only resolves inside the .agi
+          # envelope — so outside it, the suite found no classes at all.
+          HOLY_SHEET_PHP_SRC: ${{ github.workspace }}/.php-holy-sheet/src
 
       - name: Build
         run: npm run build

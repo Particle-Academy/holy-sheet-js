@@ -16,7 +16,12 @@ spl_autoload_register(function (string $class): void {
         return;
     }
     $rel = substr($class, strlen($prefix));
-    $file = __DIR__ . '/../../holy-sheet/src/' . str_replace('\\', '/', $rel) . '.php';
+    // HOLY_SHEET_PHP_SRC first, sibling checkout second. The hard-coded
+    // sibling path alone meant this only resolved inside the .agi envelope,
+    // so CI -- or anyone with a different layout -- silently got no parity
+    // run at all rather than an error.
+    $root = getenv('HOLY_SHEET_PHP_SRC') ?: __DIR__ . '/../../holy-sheet/src';
+    $file = rtrim($root, '/') . '/' . str_replace('\\', '/', $rel) . '.php';
     if (is_file($file)) {
         require $file;
     }

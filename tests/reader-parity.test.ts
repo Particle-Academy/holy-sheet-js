@@ -150,6 +150,23 @@ function normalize(value: Any): Any {
 
 const HAS_PHP = phpAvailable();
 
+/**
+ * In CI a missing PHP is a FAILURE, not a skip.
+ *
+ * This suite is the strongest guarantee the PHP/TS pair has, and
+ * `skipIf(!HAS_PHP)` meant a runner without PHP reported success with zero
+ * cross-engine coverage — which is exactly what happened, because ci.yml
+ * installed Node only. A green build asserting nothing is worse than a red
+ * one, because nobody investigates green.
+ */
+if (process.env.CI && !HAS_PHP) {
+  throw new Error(
+    "php is not on PATH. This suite is the cross-engine parity guarantee; " +
+      "skipping it in CI would report success with no coverage. Install PHP, " +
+      "or set HOLY_SHEET_PHP_SRC and ensure `php` resolves.",
+  );
+}
+
 describe.skipIf(!HAS_PHP)("cross-engine reader parity (PHP vs TS)", () => {
   let dir: string;
   beforeAll(() => {
