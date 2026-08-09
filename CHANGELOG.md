@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.2 — 2026-08-09
+
+### Fixed
+
+- **`scripts/php-describe.php` was missed by 2.0.1**, so the reader-parity suite
+  still could not find the PHP classes outside the `.agi` envelope and CI failed
+  on the 2.0.1 commit. It now honours `HOLY_SHEET_PHP_SRC` like its sibling.
+
+  Worth saying plainly: CI caught this the very first time the parity suites
+  actually ran. Under the old `skipIf` the incomplete fix would have gone green.
+
 ## 2.0.1 — 2026-08-09
 
 ### Fixed

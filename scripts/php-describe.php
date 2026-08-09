@@ -17,7 +17,11 @@ spl_autoload_register(function (string $class): void {
         return;
     }
     $rel = substr($class, strlen($prefix));
-    $file = __DIR__ . '/../../holy-sheet/src/' . str_replace('\\', '/', $rel) . '.php';
+    // HOLY_SHEET_PHP_SRC first, sibling checkout second -- same as
+    // php-tobytes.php. This script was missed when that one was fixed, and CI
+    // caught it the very first time it actually ran the parity suites.
+    $root = getenv('HOLY_SHEET_PHP_SRC') ?: __DIR__ . '/../../holy-sheet/src';
+    $file = rtrim($root, '/') . '/' . str_replace('\\', '/', $rel) . '.php';
     if (is_file($file)) {
         require $file;
     }
