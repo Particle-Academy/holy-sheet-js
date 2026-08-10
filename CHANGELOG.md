@@ -1,5 +1,30 @@
 # Changelog
 
+All notable changes to `@particle-academy/holy-sheet-js` are documented here.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+
+- **A checksum test pinning `holy-sheet.schema.json` to its PHP twin.** The
+  schema is a byte-identical copy of `holy-sheet/skills/holy-sheet.schema.json`,
+  kept in sync by remembering to edit both. Nothing checked that — and this is
+  the file handed to an LLM as the tool definition, so a one-sided edit did not
+  fail a build, it changed what an agent was told the API is on one backend and
+  not the other.
+
+  To change the schema: edit both copies, run either suite, paste the new hash
+  into both tests. The mild annoyance is the mechanism.
+
+  The hash is taken over **newline-normalised** content. Neither repo has a
+  `.gitattributes`, so the file is stored LF and lands CRLF on a Windows
+  checkout — a raw-bytes checksum would have passed on CI and failed on the
+  maintainer's own machine, which is a worse failure than the one being
+  prevented.
+
 ## 2.1.0 — 2026-08-09
 
 ### Fixed
