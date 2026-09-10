@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The tool schema announced its own shipped features as unreleased.**
+  `src/holy-sheet.schema.json` is a byte-identical copy of the PHP twin's, and
+  carried the same defect: every formatting field described in the future tense
+  ("Lands in 0.3.", "Lands in 0.5.") under a heading declaring a v0.2.0 that
+  could not style anything, while the package shipped at 2.x with all of it
+  working.
+
+  Updated in lockstep with `particle-academy/holy-sheet`; both checksum pins
+  moved together. See that package's entry for the measurement.
+
+
+
 ## 2.2.1 — 2026-09-10
 
 ### Fixed

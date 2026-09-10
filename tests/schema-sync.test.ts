@@ -41,7 +41,7 @@ import { describe, expect, it } from "vitest";
  * only the line-ending representation is forgiven.
  */
 const SHARED_SCHEMA_SHA256 =
-  "a09d491ee67c32d9c37e8608a6bc3334993a6c77f978e5ffe158f769e77e2d9c";
+  "01d701da2cc469dbf10d64bc2ddac17e12487c2304cfa93b3262711702b8fad4";
 
 /** Hash of the content, independent of how the checkout wrote the newlines. */
 function normalisedSha256(text: string): string {
