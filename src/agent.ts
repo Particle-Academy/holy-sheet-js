@@ -15,8 +15,8 @@ import { XlsxReader } from "./reader/xlsx-reader";
 import { XlsxWriter } from "./writer/xlsx-writer";
 import toolSchema from "./holy-sheet.schema.json";
 
-/** Feature-parity baseline with PHP holy-sheet; bumped independently on npm. */
-export const VERSION = "1.0.0";
+/** This package's own version, pinned to package.json by `version.test.ts`. */
+export const VERSION = "2.2.1";
 
 type Any = any;
 

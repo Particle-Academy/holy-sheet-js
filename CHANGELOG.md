@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 2.2.1 — 2026-09-10
+
+### Fixed
+
+- **`version()` reports the version this package actually ships as.** It
+  returned `1.0.0` from a 2.2.x release. The constant had drifted because
+  nothing compared it to the packaging metadata — the same shape as every other
+  two-copies-of-one-number failure in this estate.
+
+  `VersionIsSingleSourcedTest` / `version.test.ts` now pins it, so the class is
+  closed rather than the instance fixed. `dark-slide-py` already had that
+  assertion and was the only engine in the family to catch itself.
+
+
 ## 2.2.0 — 2026-09-10
 
 ### Added
