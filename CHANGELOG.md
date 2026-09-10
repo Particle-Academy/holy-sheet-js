@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A sheet with BOTH a table and explicit cells no longer discards the table.**
+  `normalizeSheet` returned the moment `cells` was set, silently throwing away
+  `columns`, `rows`, `totals` and `theme`. A four-row report with one styled
+  title cell wrote a **one-cell workbook**, and `validate()` reported no errors,
+  because the validator explicitly permits both shapes together.
+
+  The PHP twin had the identical bug in the identical place. That is why no
+  parity test caught it: **parity detects disagreement, and the two runtimes
+  agreed.**
+
+  **What you must do: nothing.** A sheet using only one of the two shapes
+  behaves exactly as before. Explicit cells win at their address, and their
+  format is merged over the table's, so a cell asking only for `bold` keeps the
+  column's currency format instead of dropping to bare.
+
+- **Bare scalar cells are written instead of silently emptied.** `{A1: 42}` read
+  `.value` off a number, got `undefined`, and wrote a blank cell — no error,
+  just a hole where the number should be. **This one was Node-only:** PHP has
+  always had the branch, and the port dropped it.
+
+- **A bare `"=SUM(...)"` string is promoted to a real formula**, in both cell
+  maps and rows. Also Node-only: the same schema produced a working formula in
+  PHP and the literal text `=SUM(...)` in Node.
+
+- **A `comment` given as a plain string is no longer dropped** — only the object
+  form was read, and the string form was accepted by the validator and lost.
+
 ### Added
 
 - **A checksum test pinning `holy-sheet.schema.json` to its PHP twin.** The

@@ -25,17 +25,16 @@ export class Normalizer {
   private normalizeSheet(sheet: Any): Sheet {
     const name = String(sheet.name);
 
-    if (sheet.cells != null) {
-      return new Sheet(
-        name,
-        this.normalizeCellMap(sheet.cells),
-        this.normalizeMerges(sheet.mergedRegions ?? []),
-        this.normalizeColumnWidths(sheet.columnWidths ?? {}),
-        toInt(sheet.frozenRows ?? 0),
-        toInt(sheet.frozenCols ?? 0),
-      );
-    }
-
+    // NOTE: there is no separate "cells-only" path. A sheet with no columns
+    // and no rows builds an empty table below and then takes the overlay, which
+    // is the same code the combined case runs.
+    //
+    // It USED to return here the moment `cells` was set, and that early return
+    // silently discarded `columns`, `rows`, `totals` and `theme` — a four-row
+    // table with one styled title cell wrote a one-cell workbook, while
+    // `validate()` reported no errors because the validator explicitly permits
+    // both together. The PHP twin had the identical bug in the identical place;
+    // see `Schema/Normalizer.php`.
     const cells = new Map<string, Cell>();
     const columns: Any[] = sheet.columns ?? [];
     const rows: Any[] = sheet.rows ?? [];
@@ -100,6 +99,29 @@ export class Normalizer {
       }
     }
 
+    // The overlay. Explicit cells win at their address; a format is MERGED
+    // rather than swapped, so a cell that only sets `bold` keeps the theme's
+    // banding and the column's currency format instead of dropping to bare.
+    if (sheet.cells != null) {
+      for (const [address, cell] of this.normalizeCellMap(sheet.cells)) {
+        const beneath = cells.get(address);
+
+        cells.set(
+          address,
+          beneath?.format
+            ? new Cell(
+                cell.address,
+                cell.value,
+                cell.formula,
+                beneath.format.mergeWith(cell.format),
+                cell.comment,
+                cell.cachedValue,
+              )
+            : cell,
+        );
+      }
+    }
+
     return new Sheet(
       name,
       cells,
@@ -113,15 +135,32 @@ export class Normalizer {
   private normalizeCellMap(map: Record<string, Any>): Map<string, Cell> {
     const cells = new Map<string, Cell>();
     for (const [address, cellData] of Object.entries(map)) {
-      const format =
-        cellData && isPlainObject(cellData.format) ? CellFormat.fromInput(cellData.format) : null;
-      const comment =
-        cellData && isPlainObject(cellData.comment)
-          ? new CellComment(
-              String(cellData.comment.text ?? ""),
-              cellData.comment.author ?? null,
-              cellData.comment.color ?? null,
-            )
+      // A bare scalar cell, e.g. {A1: 42} or {A1: "=SUM(B1:B5)"}.
+      //
+      // Without this branch every non-object cell read as EMPTY: `cellData.value`
+      // on a number is `undefined`, so `{A1: 42}` wrote a blank cell and a bare
+      // formula string vanished outright — no error, just a hole in the sheet.
+      // PHP has always had this branch; the port dropped it.
+      if (!isPlainObject(cellData)) {
+        const [bare, formula] = promoteFormula(cellData);
+        cells.set(
+          address,
+          new Cell(address, formula !== null ? null : this.coerceValue(bare, null), formula),
+        );
+        continue;
+      }
+
+      const format = isPlainObject(cellData.format) ? CellFormat.fromInput(cellData.format) : null;
+      // `comment` takes either a string or an object. The string form was
+      // accepted by the validator and dropped here — the same silent-drop shape.
+      const comment = isPlainObject(cellData.comment)
+        ? new CellComment(
+            String(cellData.comment.text ?? ""),
+            cellData.comment.author ?? null,
+            cellData.comment.color ?? null,
+          )
+        : typeof cellData.comment === "string"
+          ? new CellComment(cellData.comment)
           : null;
       const rawValue = cellData?.value ?? null;
       cells.set(
@@ -203,7 +242,14 @@ export class Normalizer {
       );
     }
 
-    return new Cell(address, this.coerceValue(value, columnFormat), null, columnFormat);
+    const [bare, formula] = promoteFormula(value);
+
+    return new Cell(
+      address,
+      formula !== null ? null : this.coerceValue(bare, columnFormat),
+      formula,
+      columnFormat,
+    );
   }
 
   private coerceValue(value: Any, format: CellFormat | null): CellPrimitive {
@@ -230,6 +276,23 @@ export class Normalizer {
 
     return value;
   }
+}
+
+/**
+ * A bare string cell value beginning with "=" (e.g. "=SUM(B2:B10)") is an Excel
+ * formula, not literal text — promote it to a real formula cell.
+ *
+ * Only *bare* strings promote. An object cell ({value: "=x"} or {formula: "x"})
+ * is always taken as the caller's explicit intent, so {value: "=literal"} is the
+ * escape hatch for a genuine leading-"=" string. Mirrors PHP
+ * `Normalizer::promoteFormula`, which the port had omitted entirely: the same
+ * schema produced a formula in PHP and the literal text "=SUM(B2:B10)" in Node.
+ */
+function promoteFormula(value: Any): [Any, string | null] {
+  if (typeof value === "string" && value.length > 1 && value[0] === "=") {
+    return [null, value.slice(1)];
+  }
+  return [value, null];
 }
 
 function toInt(v: unknown): number {
