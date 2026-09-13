@@ -39,8 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Unreadable bytes now throw `UnsupportedFormatException` instead of a bare
   `Error`.** It extends `Error`, so **an existing `catch` keeps working: do
-  nothing.** Only code matching the old message (`not a zip archive`,
-  `missing xl/workbook.xml`) sees different text for those cases.
+  nothing.** The message for bytes that are not a zip still says "not a zip
+  archive"; only code matching the rest of the old text (`(no EOCD record)`,
+  `missing xl/workbook.xml`) sees different wording.
 
 ### Fixed
 

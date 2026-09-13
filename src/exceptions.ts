@@ -54,7 +54,7 @@ export class UnsupportedFormatException extends Error {
 
   static notAZip(path: string | null = null): UnsupportedFormatException {
     return new UnsupportedFormatException(
-      `[holy-sheet] cannot read ${path ?? "this file"}: it is not a zip package, and xlsx and ods both are`,
+      `[holy-sheet] cannot read ${path ?? "this file"}: it is not a zip archive, and xlsx and ods both are`,
       path,
     );
   }

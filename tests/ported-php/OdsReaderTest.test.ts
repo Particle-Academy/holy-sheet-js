@@ -349,6 +349,8 @@ describe("ods reader (ported PHP OdsReaderTest)", () => {
 
       expect(caught).toBeInstanceOf(UnsupportedFormatException);
       expect(caught).toBeInstanceOf(Error);
+      // The phrase the old Error carried, kept for anyone matching on it.
+      expect((caught as Error).message).toContain("not a zip archive");
     });
   });
 });
