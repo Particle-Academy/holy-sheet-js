@@ -48,4 +48,31 @@ describe("validator (ported PHP ValidatorTest)", () => {
   it("throws SchemaException on assert with structured errors", () => {
     expect(() => Agent.toBytes({})).toThrow(SchemaException);
   });
+
+  // A sheet with no cells describes as `cells: []` in PHP (an empty PHP array),
+  // and that JSON is what reaches this validator. PHP's own validator read it as
+  // a list and rejected it; this one rejected any array. Both broke
+  // describe() -> write() for a workbook with an empty sheet.
+  it("accepts an empty cells array, which is how PHP's describe() reports an empty sheet", () => {
+    expect(Agent.validate({ sheets: [{ name: "Empty", cells: [] }] })).toEqual([]);
+    expect(Agent.validate({ sheets: [{ name: "Empty", cells: {} }] })).toEqual([]);
+  });
+
+  it("still flags cells given as a non-empty list", () => {
+    const errors = Agent.validate({ sheets: [{ name: "Bad", cells: [{ value: 1 }] }] });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].path).toBe("sheets[0].cells");
+  });
+
+  it("writes back a described workbook that has an empty sheet", () => {
+    const bytes = Agent.toBytes({
+      sheets: [
+        { name: "Data", columns: [{ header: "A" }], rows: [[1]] },
+        { name: "Empty", cells: [] },
+      ],
+    });
+    const described = Agent.read(bytes);
+    expect(described.sheets[1]).toEqual({ name: "Empty", cells: {} });
+    expect(Agent.read(Agent.toBytes(described))).toEqual(described);
+  });
 });

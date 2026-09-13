@@ -116,10 +116,6 @@ describe("ods reader (ported PHP OdsReaderTest)", () => {
 
     it("returns a schema that writes straight back out", () => {
       const schema = read("workbook.ods");
-      // Leave out the empty sheet, as the PHP test does (a pre-existing
-      // read/write contract defect there, not an ods one).
-      schema.sheets.splice(4, 1);
-
       same(Agent.validate(schema), []);
       const back = withoutAuto(Agent.read(Agent.toBytes(schema)));
       same(back.sheets[0].cells.B3, schema.sheets[0].cells.B3);

@@ -55,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Updated in lockstep with `particle-academy/holy-sheet`; both checksum pins
   moved together. See that package's entry for the measurement.
 
-
+- **An empty `cells: []` validates.** PHP's `describe()` reports a sheet with no cells as `cells: []`, and this validator rejected any array, so a schema read in PHP and written here failed on an empty sheet. The PHP validator had the same defect and is fixed in holy-sheet 2.2.0. A non-empty list is still an error.
 
 ## 2.2.1 — 2026-09-10
 

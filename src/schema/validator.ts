@@ -145,7 +145,10 @@ export class Validator {
     }
 
     if (sheet.cells != null) {
-      if (!isPlainObject(sheet.cells)) {
+      // `[]` is an empty map in PHP terms: PHP's describe() reports a sheet with
+      // no cells that way, so rejecting it broke describe() -> write().
+      const emptyList = Array.isArray(sheet.cells) && sheet.cells.length === 0;
+      if (!isPlainObject(sheet.cells) && !emptyList) {
         errors.push(
           error(
             `${path}.cells`,
