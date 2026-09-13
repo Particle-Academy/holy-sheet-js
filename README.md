@@ -46,11 +46,27 @@ await Agent.write(schema, "sales.xlsx");
 - `lint(schema)` → formula problems `{sheet, address, formula, error, hint}[]`
 - `fromArray(rows, headers?, sheetName?, options?)` → schema
 - `fromCsv(csvOrPath, options?)` → schema
-- `describe(pathOrBytes)` → schema (round-trip reader)
+- `read(bytes)` → schema (universal) and `describe(path)` → schema (Node only): the round-trip reader, for an `.xlsx` **or an `.ods`**
 - `toolDefinition()` → JSON Schema for LLM tool-use
 - `version()` → string
 
 See `docs/` for the full schema reference.
+
+### Reading OpenDocument spreadsheets
+
+`read()` and `describe()` accept an OpenDocument spreadsheet (`.ods`) as well
+as an `.xlsx`, and return the same schema for both, so a caller needs no
+branch on the file type and no second library:
+
+```ts
+const schema = await Agent.describe("upload.ods"); // or upload.xlsx: same shape
+```
+
+The format is decided from the file's contents, never its name. Anything else
+throws `UnsupportedFormatException` (an `Error`, with the declared `mimetype`
+when there is one). What maps and what does not is listed in the PHP package's
+[`docs/ReadPath.md`](https://github.com/Particle-Academy/holy-sheet/blob/main/docs/ReadPath.md#opendocument-spreadsheets-ods);
+this port reads the same fixtures and is diffed against it.
 
 ---
 

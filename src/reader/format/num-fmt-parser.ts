@@ -38,7 +38,7 @@ const BUILTIN: Record<number, string> = {
   49: "@",
 };
 
-const SYMBOL_TO_ISO: Record<string, string> = {
+export const SYMBOL_TO_ISO: Record<string, string> = {
   $: "USD",
   "€": "EUR",
   "£": "GBP",

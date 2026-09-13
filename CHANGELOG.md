@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-09-13
+
+### Added
+
+- **`Agent.read()` and `Agent.describe()` read OpenDocument spreadsheets
+  (`.ods`) into the same schema as `.xlsx`.** Ported from
+  `particle-academy/holy-sheet`'s new reader, which has the full list of what
+  maps (values, formulas translated to A1, repeats, merges, comments, styles,
+  data styles, metadata) and what does not (frozen panes, column widths,
+  fonts, function-name translation). The format is sniffed from the bytes, so
+  the caller's branch on the file type can go.
+
+  Diffed against the PHP reader on the PHP repo's own fixtures, key order
+  included, in `tests/ods-reader-parity.test.ts`: a LibreOffice-converted
+  workbook, a hand-written native file, and a hand-built package of what
+  LibreOffice rewrites on save. `tests/ported-php/OdsReaderTest.test.ts` ports
+  the PHP assertions. Both load the fixtures from the PHP checkout
+  (`HOLY_SHEET_PHP_SRC`, or the sibling directory), as the parity suites
+  already did.
+
+- **`UnsupportedFormatException`**, exported, thrown for bytes that are
+  neither format, with the declared `mimetype` when there is one.
+- **`OdsReader`** and **`FormatSniffer`**, exported beside `XlsxReader`, and
+  `XlsxReader.readFiles()` for an already-unzipped package.
+- **`parseXml(src, { namespaces: true })`** resolves namespaces and keeps mixed
+  content in order. OpenDocument needs both; without the option the parser
+  behaves exactly as before.
+
+### Changed
+
+- **Unreadable bytes now throw `UnsupportedFormatException` instead of a bare
+  `Error`.** It extends `Error`, so **an existing `catch` keeps working: do
+  nothing.** Only code matching the old message (`not a zip archive`,
+  `missing xl/workbook.xml`) sees different text for those cases.
+
 ### Fixed
 
 - **The tool schema announced its own shipped features as unreleased.**

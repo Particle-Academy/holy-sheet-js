@@ -11,17 +11,26 @@ import type {
   ValidationError,
   WriteResult,
 } from "./schema/types";
+import { FormatSniffer } from "./reader/format-sniffer";
+import { OdsReader } from "./reader/ods-reader";
+import { WorkbookSchema } from "./reader/workbook-schema";
 import { XlsxReader } from "./reader/xlsx-reader";
 import { XlsxWriter } from "./writer/xlsx-writer";
 import toolSchema from "./holy-sheet.schema.json";
 
 /** This package's own version, pinned to package.json by `version.test.ts`. */
-export const VERSION = "2.2.1";
+export const VERSION = "2.3.0";
 
 type Any = any;
 
 function toU8(input: Uint8Array | ArrayBuffer): Uint8Array {
   return input instanceof Uint8Array ? input : new Uint8Array(input);
+}
+
+function readSpreadsheet(bytes: Uint8Array, path: string | null): Record<string, unknown> {
+  const { format, files } = FormatSniffer.sniff(bytes, path);
+  const workbook = format === "ods" ? new OdsReader().readFiles(files) : new XlsxReader().readFiles(files);
+  return WorkbookSchema.fromWorkbook(workbook);
 }
 
 /**
@@ -57,17 +66,21 @@ export const Agent = {
     return toolSchema as Record<string, unknown>;
   },
 
-  /** Round-trip xlsx bytes back to a schema. Universal. */
+  /**
+   * Round-trip xlsx or ods bytes back to a schema. Universal. The format is
+   * told apart by content, never by name, and both describe to the same
+   * schema. Throws `UnsupportedFormatException` for anything else.
+   */
   read(input: Uint8Array | ArrayBuffer): Record<string, unknown> {
-    return new XlsxReader().describe(toU8(input));
+    return readSpreadsheet(toU8(input), null);
   },
 
-  /** Round-trip an xlsx file on disk back to a schema (Node only). */
+  /** Round-trip an xlsx or ods file on disk back to a schema (Node only). */
   async describe(path: string): Promise<Record<string, unknown>> {
     const fs = await import("node:fs");
     if (!fs.existsSync(path)) return { error: "not_found", path };
     const bytes = fs.readFileSync(path);
-    return new XlsxReader().describe(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
+    return readSpreadsheet(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength), path);
   },
 
   /** Validate + conservative repairs in one call. */
