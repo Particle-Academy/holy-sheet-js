@@ -1,12 +1,12 @@
 # @particle-academy/holy-sheet
 
-[![Fancy UI suite](art/fancy-ui.svg)](https://particle.academy)
+[![Fancified](art/fancified.svg)](https://particle.academy)
 
 Zero-dependency, **isomorphic** (browser + Node) `.xlsx` writer + reader +
 formula linter for agentic document creation. The Node/TypeScript mirror of the
 PHP [`particle-academy/holy-sheet`](https://github.com/Particle-Academy/holy-sheet)
-— same schema in, same `.xlsx` out (feature-parity with PHP 1.2.0; the PHP
-package has since shipped 1.3.0, whose additions are not yet mirrored here).
+— same schema in, same `.xlsx` out (the PHP package's `dumpJson` and `Toolkit`
+are not mirrored here; `CHANGELOG.md` records which PHP releases each fix mirrors).
 
 ```ts
 import { Agent } from "@particle-academy/holy-sheet";
