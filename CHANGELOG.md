@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] — 2026-09-15
+
+### Added
+
+- **`Agent.diff()`, `Agent.reduce()`, `Agent.opSchema()` and `Agent.equivalent()`:
+  a workbook's versions stored as ops** (holy-sheet [#7](https://github.com/Particle-Academy/holy-sheet/issues/7)).
+  Ported from `particle-academy/holy-sheet` 2.3.0, which is the reference: the
+  same algorithm, so the same two schemas give the same ops in the same order
+  in both runtimes, and an op history written by one replays in the other.
+  Hashing xlsx bytes cannot keep a one-cell edit small, because a zip changes
+  nearly every byte, so a version history had to store a whole file per edit.
+  `diff(newer, older)` is the op list that restores `older` from `newer`.
+  - `reduce(a, diff(a, b))` equals `b`, key order aside. The ops are verified
+    by replaying them: a sheet the granular ops cannot reproduce is replaced
+    whole, and so, as a last resort, is the workbook.
+  - One changed cell is one `set_cell`. Rows and columns are aligned by content
+    first, so an inserted row is one `insert_rows` plus its cells rather than
+    every cell below it rewritten.
+  - Schemas that write the same workbook diff to `[]`, so a save without a change
+    records nothing. A columns/rows sheet and the cells it becomes are the same,
+    and so is the creation time the writer stamps on a schema that names none.
+  - `set_cell`, `set_range` and `set_workbook` are fancy-sheets' `SheetOp` shapes
+    and behave as its reducer does (a `set_cell` without a formula clears it and
+    keeps the format). The rest are holy-sheet's: `clear_cell`,
+    `insert_rows`/`delete_rows`, `insert_columns`/`delete_columns`,
+    `add_sheet`/`remove_sheet`/`rename_sheet`/`move_sheet`/`replace_sheet`,
+    `set_merged_regions`, `set_column_widths`, `set_frozen` and `set_meta`.
+  - Row and column ops move cells, merged regions and column widths. They do not
+    rewrite formula text; a formula that changes with an insert is its own
+    `set_cell`.
+- **`SheetOp`**, a discriminated union on `type` (and one interface per op),
+  plus **`SheetDiff`**, **`SheetReducer`** and **`SheetOpSchema`**, exported
+  beside the other building blocks.
+
+`tests/sheet-ops-parity.test.ts` runs the PHP package's `Agent::diff` and
+`Agent::reduce` on every case and requires the same ops, field for field and in
+order: each edit PHP's own suite pins, both ways; seeded random cell edits;
+seeded row and column inserts and deletes; moved rows and raw alignments, where
+the delete-first tie-break decides the result; and the op JSON Schema, byte for
+byte. Two differences cannot be removed, because JS values do not carry the
+distinction:
+
+- PHP counts `1` and `1.0` as different values, so its diff rewrites a `1` as
+  `1.0` with a `set_cell` where this one records nothing.
+- An emptied column-width map is emitted as `{}`, where PHP's JSON writes its
+  empty array as `[]`. Both reducers read either as empty.
+
+**What you must do:** nothing. This only adds methods.
+
 ## [2.3.1] — 2026-09-14
 
 ### Fixed

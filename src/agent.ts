@@ -16,10 +16,14 @@ import { OdsReader } from "./reader/ods-reader";
 import { WorkbookSchema } from "./reader/workbook-schema";
 import { XlsxReader } from "./reader/xlsx-reader";
 import { XlsxWriter } from "./writer/xlsx-writer";
+import { SheetDiff } from "./ops/sheet-diff";
+import { SheetOpSchema } from "./ops/sheet-op-schema";
+import { SheetReducer } from "./ops/sheet-reducer";
+import type { SheetOp } from "./ops/types";
 import toolSchema from "./holy-sheet.schema.json";
 
 /** This package's own version, pinned to package.json by `version.test.ts`. */
-export const VERSION = "2.3.1";
+export const VERSION = "2.4.0";
 
 type Any = any;
 
@@ -108,7 +112,61 @@ export const Agent = {
     return new FormulaLinter().lint(schema);
   },
 
+  /**
+   * The ops that turn schema `a` into schema `b`. Mirrors PHP `Agent::diff`, and
+   * gives the same ops in the same order for the same inputs.
+   *
+   * - `reduce(a, diff(a, b))` equals `b` (key order aside).
+   * - Schemas that write the same workbook diff to `[]`, so
+   *   `diff(s, read(toBytes(s)))` is `[]`: a save without a change records
+   *   nothing.
+   * - One changed cell is one `set_cell`; an inserted row is one
+   *   `insert_rows` plus its cells.
+   *
+   * Store `diff(newer, older)` to keep a version as the ops that restore it.
+   * Both schemas must be valid: the "same workbook" check writes them.
+   */
+  diff(a: Any, b: Any): SheetOp[] {
+    return SheetDiff.diff(a, b);
+  },
+
+  /**
+   * Apply one op, or a list of them, to a schema; returns a new schema and never
+   * modifies the input. An op naming a sheet that is not there is skipped.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  reduce(schema: Any, opOrOps: SheetOp | readonly SheetOp[]): Record<string, any> {
+    return SheetReducer.applyAll(schema, isOpList(opOrOps) ? Object.values(opOrOps) : [opOrOps]);
+  },
+
+  /**
+   * JSON Schema for one op. `set_cell`, `set_range` and `set_workbook` are
+   * fancy-sheets' `SheetOp` shapes.
+   */
+  opSchema(): Record<string, unknown> {
+    return SheetOpSchema.jsonSchema();
+  },
+
+  /**
+   * Whether two schemas write the same workbook: a columns/rows sheet and the
+   * cell map it becomes are equivalent, and so are a schema without
+   * `meta.created` and its written copy.
+   */
+  equivalent(a: Any, b: Any): boolean {
+    return SheetDiff.equivalent(a, b);
+  },
+
   version(): string {
     return VERSION;
   },
 };
+
+/**
+ * PHP's `$opOrOps === [] || array_is_list($opOrOps)`: an array, or an object
+ * keyed exactly "0".."n-1" (which is how PHP sees `{}` too).
+ */
+function isOpList(opOrOps: unknown): boolean {
+  if (Array.isArray(opOrOps)) return true;
+  if (typeof opOrOps !== "object" || opOrOps === null) return false;
+  return Object.keys(opOrOps).every((key, i) => key === String(i));
+}

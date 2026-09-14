@@ -48,6 +48,7 @@ await Agent.write(schema, "sales.xlsx");
 - `fromCsv(csvOrPath, options?)` → schema
 - `read(bytes)` → schema (universal) and `describe(path)` → schema (Node only): the round-trip reader, for an `.xlsx` **or an `.ods`**
 - `toolDefinition()` → JSON Schema for LLM tool-use
+- `diff(a, b)` → the ops that turn one schema into another, `reduce(schema, opOrOps)` → a new schema, `opSchema()` → JSON Schema for one op, `equivalent(a, b)` → whether two schemas write the same workbook (see [Versions as diffs](#versions-as-diffs))
 - `version()` → string
 
 See `docs/` for the full schema reference.
@@ -67,6 +68,40 @@ throws `UnsupportedFormatException` (an `Error`, with the declared `mimetype`
 when there is one). What maps and what does not is listed in the PHP package's
 [`docs/ReadPath.md`](https://github.com/Particle-Academy/holy-sheet/blob/main/docs/ReadPath.md#opendocument-spreadsheets-ods);
 this port reads the same fixtures and is diffed against it.
+
+### Versions as diffs
+
+`Agent.diff(a, b)` returns the ops that turn one schema into another, and
+`Agent.reduce(schema, ops)` applies them. Keep the current workbook as a real
+file and each older version as the ops that restore it:
+
+```ts
+import { Agent, type SheetOp } from "@particle-academy/holy-sheet";
+
+const old = Agent.read(currentBytes);
+const ops: SheetOp[] = Agent.diff(edited, old); // store these with the version
+
+Agent.reduce(edited, ops); // equals old
+Agent.opSchema(); // JSON Schema for one op
+```
+
+- **Exact:** `reduce(a, diff(a, b))` equals `b`, key order aside.
+- **Small:** one changed cell is one `set_cell`, and an inserted row is one
+  `insert_rows` plus that row's cells. Rows and columns are aligned by content
+  before cells are compared.
+- **Nothing for no change:** schemas that write the same workbook diff to `[]`,
+  so `diff(s, read(toBytes(s)))` is `[]`. `Agent.equivalent()` asks that
+  question directly.
+- **The same ops as PHP:** this is a port of `particle-academy/holy-sheet`
+  2.3.0's `Agent::diff`, checked against it op for op, so a history written by
+  either runtime replays in the other.
+
+`set_cell`, `set_range` and `set_workbook` are fancy-sheets' `SheetOp` shapes, so
+stored ops can drive a live `useSheetSync` session. The other ops cover sheets,
+rows, columns, merges, widths, frozen panes and meta. Granular ops address
+sheets in the cell form `read()` returns; a sheet authored as columns/rows is
+replaced whole when it changes. `reduce()` never modifies its input, and shares
+the parts an op leaves alone with its result.
 
 ---
 

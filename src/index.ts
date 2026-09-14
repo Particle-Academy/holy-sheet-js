@@ -2,6 +2,7 @@ export { Agent, VERSION } from "./agent";
 export { HolySheet } from "./holy-sheet";
 export { SchemaException, UnsupportedFormatException } from "./exceptions";
 export * from "./schema/types";
+export type * from "./ops/types";
 
 // Lower-level building blocks (advanced use / parity with PHP services).
 export { Validator } from "./schema/validator";
@@ -17,4 +18,7 @@ export { FormatSniffer, type SpreadsheetFormat } from "./reader/format-sniffer";
 export { ArrayBuilder } from "./helpers/array-builder";
 export { CsvBuilder } from "./helpers/csv-builder";
 export { CellAddress } from "./workbook/cell-address";
+export { SheetDiff } from "./ops/sheet-diff";
+export { SheetReducer } from "./ops/sheet-reducer";
+export { SheetOpSchema } from "./ops/sheet-op-schema";
 export { zipSync, unzipSync, type ZipFile } from "./zip";
