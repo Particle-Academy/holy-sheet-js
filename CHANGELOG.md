@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.4.3] — 2026-09-15
+## [2.4.3] — 2026-09-14
 
 ### Fixed
 
@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or by junk. `write()` now refuses it; run it through `validateAndRepair()`, or
   key widths by index.
 
-## [2.4.2] — 2026-09-15
+## [2.4.2] — 2026-09-14
 
 ### Fixed
 
@@ -87,7 +87,7 @@ output changes only for a schema holding a padded cell key or a width key that
 is not an index, where it matches PHP 2.3.3's, and `diff()` now throws on a
 schema holding a value JSON cannot, which JSON input never does.
 
-## [2.4.1] — 2026-09-15
+## [2.4.1] — 2026-09-14
 
 ### Fixed
 
@@ -100,7 +100,7 @@ schema holding a value JSON cannot, which JSON input never does.
 
   **What you must do:** nothing.
 
-## [2.4.0] — 2026-09-15
+## [2.4.0] — 2026-09-14
 
 ### Added
 
