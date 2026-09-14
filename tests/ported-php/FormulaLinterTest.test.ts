@@ -132,4 +132,64 @@ describe("formula linter (ported PHP FormulaLinterTest)", () => {
     expect(issues[0].error).toBe("#VALUE!");
     expect(issues[0].hint).toContain('B2 = "oops"');
   });
+
+  // Sheet names that need quoting — holy-sheet issue #6. Ported case for case.
+  const twoSheets = (first: string, formula: string) => ({
+    sheets: [
+      { name: first, columns: [{ header: "Deal Size", type: "number" }], rows: [[9407], [9750]] },
+      { name: "Summary", columns: [{ header: "Total", type: "number" }], rows: [[{ formula }]] },
+    ],
+  });
+
+  it("lints a reference to a quoted sheet name like an unquoted one", () => {
+    expect(Agent.lint(twoSheets("My Earnings Projection", "SUM('My Earnings Projection'!A2:A3)"))).toEqual([]);
+  });
+
+  it("resolves a quoted sheet reference to the real cell", () => {
+    const issues = Agent.lint(twoSheets("My Earnings Projection", "'My Earnings Projection'!A1*2"));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].error).toBe("#VALUE!");
+    expect(issues[0].hint).toContain('A1 = "Deal Size" (string)');
+    expect(issues[0].hint).toContain("Did you mean A2");
+  });
+
+  it("reads Excel's doubled quote as one literal quote in a sheet name", () => {
+    expect(Agent.lint(twoSheets("Q3 'Final'", "SUM('Q3 ''Final'''!A2:A3)"))).toEqual([]);
+  });
+
+  it("reports #REF! for a quoted sheet that does not exist, naming it", () => {
+    const issues = Agent.lint(twoSheets("Deals", "SUM('No Such Sheet'!A2:A3)"));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].error).toBe("#REF!");
+    // Byte-for-byte the PHP and Python hint.
+    expect(issues[0].hint).toBe(
+      "The formula refers to a sheet named 'No Such Sheet', and this workbook has no such sheet. Its sheets are: Deals, Summary. Quote a name that contains spaces or punctuation: 'My Sheet'!A1.",
+    );
+  });
+
+  it("reports #REF! for an unquoted sheet that does not exist", () => {
+    const issues = Agent.lint(twoSheets("Deals", "SUM(Nope!A2:A3)"));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].error).toBe("#REF!");
+  });
+
+  it("matches sheet names case-insensitively, as Excel does", () => {
+    expect(Agent.lint(twoSheets("Deals", "SUM(deals!A2:A3)"))).toEqual([]);
+    expect(Agent.lint(twoSheets("My Deals", "SUM('MY DEALS'!A2:A3)"))).toEqual([]);
+    const issues = Agent.lint(twoSheets("Deals", "DEALS!A1*2"));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].error).toBe("#VALUE!");
+  });
+
+  it("reports #NAME? for a quote that never closes", () => {
+    const issues = Agent.lint(twoSheets("My Deals", "SUM('My Deals!A2:A3)"));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].error).toBe("#NAME?");
+  });
+
+  it("reports #NAME? for a quoted name that is not a sheet reference", () => {
+    const issues = Agent.lint(twoSheets("My Deals", "'My Deals'+1"));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].error).toBe("#NAME?");
+  });
 });

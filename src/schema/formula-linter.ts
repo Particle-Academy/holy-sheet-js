@@ -11,6 +11,12 @@ const ERR_NAME = "#NAME?";
 const ERR_DIV0 = "#DIV/0!";
 const ERR_CIRC = "#CIRC!";
 
+/**
+ * A sheet qualifier, quoted ('My Sheet'!) or bare (Sheet2!). Group 1 is the name
+ * as written, quotes included.
+ */
+const SHEET_QUALIFIER = "('(?:[^']|'')+'|[A-Za-z_][A-Za-z0-9_.]*)!";
+
 class LinterError extends Error {
   constructor(public errorCode: string) {
     super(errorCode);
@@ -18,7 +24,7 @@ class LinterError extends Error {
 }
 
 interface Token {
-  type: "NUMBER" | "STRING" | "IDENT" | "OP";
+  type: "NUMBER" | "STRING" | "IDENT" | "SHEET" | "OP";
   value: string;
 }
 interface Cursor {
@@ -35,9 +41,16 @@ type Val = number | string | boolean | null | Val[];
 export class FormulaLinter {
   private index = new Map<string, Cell>();
   private cache = new Map<string, Val>();
+  /**
+   * Every sheet name, keyed by its lower-cased form. Excel matches sheet names
+   * without regard to case, and a reference to a sheet that is not here is
+   * `#REF!` rather than a range of blanks.
+   */
+  private sheetNames = new Map<string, string>();
 
   lint(schema: unknown): FormulaProblem[] {
     const workbook = new Normalizer().normalize(schema);
+    this.sheetNames = new Map(workbook.sheets.map((sheet) => [sheet.name.toLowerCase(), sheet.name]));
     this.index = this.buildIndex(workbook);
     this.cache = new Map();
     const issues: FormulaProblem[] = [];
@@ -119,6 +132,27 @@ export class FormulaLinter {
         const value = src.slice(start, i);
         i++; // closing quote
         tokens.push({ type: "STRING", value });
+        continue;
+      }
+      // Quoted sheet name: 'My Sheet', with Excel's '' for a literal quote.
+      // Kept with its quotes; cleanSheetName() unwraps it. A quote that never
+      // closes is a syntax error, not a name running to the end.
+      if (ch === "'") {
+        const start = i;
+        i++;
+        for (;;) {
+          if (i >= len) throw new LinterError(ERR_NAME);
+          if (src[i] === "'") {
+            if (i + 1 < len && src[i + 1] === "'") {
+              i += 2;
+              continue;
+            }
+            i++;
+            break;
+          }
+          i++;
+        }
+        tokens.push({ type: "SHEET", value: src.slice(start, i) });
         continue;
       }
       if (isAlpha(ch) || ch === "_" || ch === "$") {
@@ -249,17 +283,21 @@ export class FormulaLinter {
       return tok.value;
     }
 
-    if (tok.type === "IDENT") {
+    // A quoted name is only ever a sheet qualifier. On its own it is not a
+    // value, so it falls through to #NAME? below.
+    if (tok.type === "SHEET" || tok.type === "IDENT") {
       const next = c.tokens[c.pos + 1];
       const next2 = c.tokens[c.pos + 2];
-      // Sheet!Ref
+      // Sheet!Ref: (SHEET | IDENT) '!' IDENT
       if (next && next.type === "OP" && next.value === "!" && next2 && next2.type === "IDENT") {
-        const sheetName = this.cleanSheetName(tok.value);
+        const sheetName = this.sheetNames.get(this.cleanSheetName(tok.value).toLowerCase());
+        if (sheetName === undefined) throw new LinterError(ERR_REF);
         c.pos += 2;
         const startTok = c.tokens[c.pos]!.value;
         c.pos++;
         return this.resolveRefOrRange(startTok, sheetName, c, stack);
       }
+      if (tok.type === "SHEET") throw new LinterError(ERR_NAME);
       // Function call
       if (next && next.type === "OP" && next.value === "(") {
         const name = tok.value.toUpperCase();
@@ -312,9 +350,14 @@ export class FormulaLinter {
     return /^[A-Z]+\d+$/.test(r) ? r : null;
   }
 
+  /**
+   * Unwrap the single quotes Excel puts around a sheet name that needs them,
+   * and turn its doubled quote back into one: 'Q3 ''Final''' is Q3 'Final'.
+   */
   private cleanSheetName(name: string): string {
     if (name.length >= 2 && name[0] === "'" && name[name.length - 1] === "'") {
-      return name.slice(1, -1);
+      // split/join rather than replaceAll: the package targets a lib before ES2021.
+      return name.slice(1, -1).split("''").join("'");
     }
     return name;
   }
@@ -507,7 +550,7 @@ export class FormulaLinter {
       case ERR_VALUE:
         return this.hintValue(formula, sheet);
       case ERR_REF:
-        return "A cell reference points to a cell that doesn't exist in the workbook. Check column letters and row numbers.";
+        return this.hintRef(formula);
       case ERR_NAME:
         return "The formula references an unknown function or has a syntax error. Holy Sheet supports: SUM, AVERAGE, COUNT, COUNTA, MIN, MAX, IF, ROUND, ABS, LEN, UPPER, LOWER, CONCAT.";
       case ERR_DIV0:
@@ -519,11 +562,25 @@ export class FormulaLinter {
     }
   }
 
+  private hintRef(formula: string): string {
+    // Name the sheet when that is what is missing. "A cell doesn't exist" sends
+    // an agent to check column letters in a sheet it never created.
+    for (const m of formula.matchAll(new RegExp(SHEET_QUALIFIER, "g"))) {
+      const name = this.cleanSheetName(m[1]!);
+      if (!this.sheetNames.has(name.toLowerCase())) {
+        return `The formula refers to a sheet named '${name}', and this workbook has no such sheet. Its sheets are: ${[...this.sheetNames.values()].join(", ")}. Quote a name that contains spaces or punctuation: 'My Sheet'!A1.`;
+      }
+    }
+    return "A cell reference points to a cell that doesn't exist in the workbook. Check column letters and row numbers.";
+  }
+
   private hintValue(formula: string, sheet: string): string {
-    const re = /(?:([A-Za-z][A-Za-z0-9_]*)!)?\$?([A-Z]+)\$?(\d+)/gi;
+    const re = new RegExp(`(?:${SHEET_QUALIFIER})?\\$?([A-Z]+)\\$?(\\d+)`, "gi");
     const offenders: string[] = [];
     for (const m of formula.matchAll(re)) {
-      const sheetName = m[1] ? m[1] : sheet;
+      const sheetName = m[1]
+        ? (this.sheetNames.get(this.cleanSheetName(m[1]).toLowerCase()) ?? this.cleanSheetName(m[1]))
+        : sheet;
       const a1 = m[2]!.toUpperCase() + m[3]!;
       const key = sheetName + "!" + a1;
       const cell = this.index.get(key);

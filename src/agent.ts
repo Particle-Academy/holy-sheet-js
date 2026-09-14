@@ -19,7 +19,7 @@ import { XlsxWriter } from "./writer/xlsx-writer";
 import toolSchema from "./holy-sheet.schema.json";
 
 /** This package's own version, pinned to package.json by `version.test.ts`. */
-export const VERSION = "2.3.0";
+export const VERSION = "2.3.1";
 
 type Any = any;
 
