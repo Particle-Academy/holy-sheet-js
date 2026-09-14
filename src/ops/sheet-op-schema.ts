@@ -71,7 +71,15 @@ export const SheetOpSchema = {
         ["sheet", "mergedRegions"],
         "Set every merged region of a sheet.",
       ),
-      variant("set_column_widths", { sheet: sheet(), columnWidths: object() }, ["sheet", "columnWidths"], "Set every column width of a sheet (0-based column index to pixels)."),
+      // An EMPTY array too, as PHP 2.3.1 declares: PHP encodes an empty map as
+      // `[]`, which its diff emits when every width is removed. This port emits
+      // `{}`. Both mean no widths.
+      variant(
+        "set_column_widths",
+        { sheet: sheet(), columnWidths: { type: ["object", "array"], maxItems: 0 } },
+        ["sheet", "columnWidths"],
+        "Set every column width of a sheet (0-based column index to pixels); empty removes them.",
+      ),
       variant(
         "set_frozen",
         { sheet: sheet(), rows: { type: "integer", minimum: 0 }, cols: { type: "integer", minimum: 0 } },

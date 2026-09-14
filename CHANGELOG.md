@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] — 2026-09-15
+
+### Fixed
+
+- **`Agent.opSchema()` accepts a `set_column_widths` op with an empty array**, as
+  PHP 2.3.1 now declares. PHP's diff emits `columnWidths: []` when every width is
+  removed (its JSON for an empty map), which the schema rejected; an op stream
+  written by the PHP package failed validation here. `columnWidths` may be an
+  object or an empty array. The parity suite compares the schema with PHP's
+  byte for byte, so the two stay one schema.
+
+  **What you must do:** nothing.
+
 ## [2.4.0] — 2026-09-15
 
 ### Added
