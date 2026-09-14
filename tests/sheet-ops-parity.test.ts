@@ -165,9 +165,13 @@ cases.push(
     b: two({ name: "S", cells: { B2: { value: 5 } } }, { name: "T", cells: { A1: { value: 2 } } }),
   },
   {
-    name: "a column inserted beside a width key that is not an index",
+    // A reducer case since holy-sheet 2.3.4 (PHP) / 2.4.3 (TS): a schema carrying
+    // a width key that is not an index is INVALID now, so `diff()`'s same-file
+    // check refuses it in both engines. The reducer still meets such schemas
+    // (a stored op replayed over old data), and must drop the key alike.
+    name: "reduce: a column inserted beside a width key that is not an index",
     a: { sheets: [{ name: "S", cells: { A1: { value: "x" }, B1: { value: "y" } }, columnWidths: { 0: 10, abc: 999, 1: 20 } }] },
-    b: { sheets: [{ name: "S", cells: { B1: { value: "x" }, C1: { value: "y" } }, columnWidths: { 1: 10, 2: 20 } }] },
+    ops: [{ type: "insert_columns", sheet: "S", at: 1, count: 1 }],
   },
 );
 

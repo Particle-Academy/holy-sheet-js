@@ -1,5 +1,6 @@
 import { SchemaException } from "../exceptions";
 import { isPlainObject, typeOf } from "../util";
+import { ColumnWidths } from "./column-widths";
 import { Repairer } from "./repairer";
 import type { RepairResult, ValidationError } from "./types";
 
@@ -171,6 +172,44 @@ export class Validator {
           "Pick a built-in theme or omit for default.",
         ),
       );
+    }
+
+    if (sheet.columnWidths != null) {
+      if (!isPlainObject(sheet.columnWidths) && !Array.isArray(sheet.columnWidths)) {
+        errors.push(
+          error(
+            `${path}.columnWidths`,
+            "object keyed by 0-based column index",
+            typeOf(sheet.columnWidths),
+            sheet.columnWidths,
+            'Column widths map a 0-based column index to pixels: {"0": 120, "1": 80}.',
+          ),
+        );
+      } else {
+        for (const [key, px] of Object.entries(sheet.columnWidths as Record<string, unknown>)) {
+          if (ColumnWidths.index(key) === null) {
+            errors.push(
+              error(
+                `${path}.columnWidths.${key}`,
+                `a 0-based column index from 0 to ${ColumnWidths.MAX_INDEX}`,
+                typeOf(key),
+                key,
+                'Keys are 0-based column indexes: "0" is column A, "1" is column B. Use the index, not the letter.',
+              ),
+            );
+          } else if (ColumnWidths.width(px) === null) {
+            errors.push(
+              error(
+                `${path}.columnWidths.${key}`,
+                "a non-negative number of pixels",
+                typeOf(px),
+                px,
+                "A width is a number of pixels, like 120.",
+              ),
+            );
+          }
+        }
+      }
     }
 
     return errors;

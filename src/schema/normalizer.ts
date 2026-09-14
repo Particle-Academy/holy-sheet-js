@@ -1,5 +1,6 @@
 import { Cell } from "../workbook/cell";
 import { CellAddress } from "../workbook/cell-address";
+import { ColumnWidths } from "./column-widths";
 import { CellComment } from "../workbook/cell-comment";
 import { CellFormat } from "../workbook/cell-format";
 import { MergedRegion } from "../workbook/merged-region";
@@ -191,7 +192,12 @@ export class Normalizer {
   private normalizeColumnWidths(widths: Record<string, Any>): Map<number, number> {
     const out = new Map<number, number>();
     for (const [key, px] of Object.entries(widths)) {
-      out.set(parseInt(key, 10), Number(px));
+      // An entry that is not a column index and a width is skipped. `parseInt`
+      // turned "abc" into NaN and wrote a NaN column (PHP 2.3.4 skips it too).
+      const index = ColumnWidths.index(key);
+      const width = ColumnWidths.width(px);
+      if (index === null || width === null) continue;
+      out.set(index, width);
     }
     return out;
   }

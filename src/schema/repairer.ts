@@ -1,4 +1,5 @@
 import { isNumericString, isPlainObject, numericStringToNumber } from "../util";
+import { ColumnWidths } from "./column-widths";
 
 const VALID_THEMES = ["default", "minimal", "plain", "business"];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/;
@@ -60,6 +61,33 @@ export class Repairer {
       const original = sheet.theme;
       sheet.theme = "default";
       this.repairs.push(`changed '${path}.theme' from '${original}' to 'default' (unknown theme)`);
+    }
+
+    // Column widths: a letter key becomes its index; an entry that is still not
+    // a column index and a width is dropped, and said (PHP 2.3.4).
+    if (sheet.columnWidths != null && (isPlainObject(sheet.columnWidths) || Array.isArray(sheet.columnWidths))) {
+      const widths: Record<string, unknown> = {};
+      let changed = false;
+      for (const [key, px] of Object.entries(sheet.columnWidths as Record<string, unknown>)) {
+        let index = ColumnWidths.index(key);
+        if (index === null) {
+          const letters = ColumnWidths.fromLetters(key);
+          if (letters !== null) {
+            index = letters;
+            this.repairs.push(`converted '${path}.columnWidths.${key}' to column index ${index}`);
+            changed = true;
+          }
+        }
+        if (index === null || ColumnWidths.width(px) === null) {
+          this.repairs.push(`dropped '${path}.columnWidths.${key}' (not a column index and a width)`);
+          changed = true;
+          continue;
+        }
+        widths[String(index)] = px;
+      }
+      if (changed) {
+        sheet.columnWidths = widths;
+      }
     }
 
     // Trim whitespace in sparse-cell A1 addresses

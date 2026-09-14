@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.3] — 2026-09-15
+
+### Fixed
+
+- **A `columnWidths` key that is not a column index wrote a `NaN` column.** The
+  normalizer read keys with `parseInt`, so `{"abc": 999}` became a width for
+  column `NaN` in the written file. PHP overwrote column A with it and Python
+  raised; all three follow one rule now, mirroring PHP holy-sheet 2.3.4
+  (`src/schema/column-widths.ts`):
+  - a **key** is a 0-based column index from 0 to 16383, as a string of digits;
+  - a **width** is a non-negative finite number, or a string of digits (`"80.5"`).
+  - `validate()` reports each other entry by path (`sheets[0].columnWidths.abc`),
+    so `write()` and `toBytes()` refuse it.
+  - `validateAndRepair()` turns a one- or two-letter key into its index (`"B"` is
+    1) and drops an entry it cannot repair, and lists both.
+  - The normalizer skips such an entry.
+
+  **What you must do:** nothing, unless a schema carried a width keyed by a letter
+  or by junk. `write()` now refuses it; run it through `validateAndRepair()`, or
+  key widths by index.
+
 ## [2.4.2] — 2026-09-15
 
 ### Fixed
