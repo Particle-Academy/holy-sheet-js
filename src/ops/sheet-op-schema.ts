@@ -71,14 +71,22 @@ export const SheetOpSchema = {
         ["sheet", "mergedRegions"],
         "Set every merged region of a sheet.",
       ),
-      // An EMPTY array too, as PHP 2.3.1 declares: PHP encodes an empty map as
-      // `[]`, which its diff emits when every width is removed. This port emits
-      // `{}`. Both mean no widths.
+      // A LIST too, as PHP 2.3.2 declares. PHP encodes a map whose keys run
+      // 0..n-1 as a JSON list, so widths for columns A, B and C arrive as
+      // `[120, 80, 140]` and no widths as `[]`; this port passes such a list
+      // through a diff unchanged. A list's position is the column index.
       variant(
         "set_column_widths",
-        { sheet: sheet(), columnWidths: { type: ["object", "array"], maxItems: 0 } },
+        {
+          sheet: sheet(),
+          columnWidths: {
+            type: ["object", "array"],
+            items: { type: "number", minimum: 0 },
+            additionalProperties: { type: "number", minimum: 0 },
+          },
+        },
         ["sheet", "columnWidths"],
-        "Set every column width of a sheet (0-based column index to pixels); empty removes them.",
+        "Set every column width of a sheet (0-based column index to pixels; a list is indexed by position); empty removes them.",
       ),
       variant(
         "set_frozen",

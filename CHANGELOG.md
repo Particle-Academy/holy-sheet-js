@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.2] — 2026-09-15
+
+### Fixed
+
+Six defects in the op code, mirroring `particle-academy/holy-sheet` 2.3.2 (five,
+found by the Python port) and 2.3.3 (one), which are the reference. Each has a
+test ported from PHP's `SheetOpsTest.php`, and each fails against 2.4.1 except
+the second, which this port never had.
+
+- **`Agent.opSchema()` rejected a `set_column_widths` op carrying a list.** 2.4.1
+  allowed only an empty array, but PHP encodes widths keyed 0..n-1 as a list
+  (`[120, 80, 140]`), and a schema read from PHP's JSON carries that list through
+  this port's `diff()` into its op. `columnWidths` is now an object or an array
+  of non-negative numbers, a list indexed by position. The schema matches PHP
+  2.3.2's byte for byte, description included.
+- **A `type` that is not an op type is skipped before anything else.** PHP's
+  loose `switch` let `type: true` remove a sheet. This port's `switch` was
+  always strict, so it never had that defect; `reduce()` now checks the type
+  against `SheetOpSchema.TYPES` first, as PHP does.
+- **A padded address wrote a key of its own.** `set_cell` stored `" a1 "` under
+  `" A1 "`, and `clear_cell` could not reach A1 with it. Both now trim with PHP's
+  `trim()` set (space, tab, LF, CR, NUL, vertical tab; not NBSP) before
+  upper-casing.
+- **A column-width key that is not a column index was read as column A** by
+  `insert_columns` and `delete_columns` (`"abc"` became column 0), and could
+  overwrite column A's width. It is dropped. A digit string (`"007"`) and a
+  negative integer key are still indexes, as they are in PHP.
+- **Two values JSON cannot hold compared as the same.** `SheetDiff.same()`, and
+  so `diff()`, wrote `NaN`, `Infinity`, functions and symbols as `null`, so a
+  cell going from `NaN` to `Infinity` recorded no change. It now throws a
+  `TypeError` for a non-finite number, a lone UTF-16 surrogate in a string or a
+  key (a JS string cannot hold invalid UTF-8, and this is its equivalent), a
+  function or a symbol. Nesting deeper than PHP's `json_encode` depth of 4096
+  throws too, at the same level PHP does (every object and array counts, an
+  empty one included). The comparison is now a loop: the recursion it replaces
+  overflowed the call stack near that depth, at a level that varied from run to
+  run.
+- **An op with a position or count that is not a number moved or unfroze
+  things** (PHP 2.3.3). `add_sheet.index`, `move_sheet.toIndex`,
+  `set_frozen.rows`/`cols` and the row and column ops' `at`/`count` were cast as
+  PHP's `(int)` does, so `toIndex: "last"` moved a sheet to the front,
+  `index: "end"` inserted one there, and `rows: "one"` unfroze the panes. A
+  present value that is not an integer or a string of digits, `null` included,
+  now skips the op; absent keys keep their defaults (`add_sheet` appends,
+  `move_sheet` stays, `set_frozen` uses 0). As in PHP, the check covers every op
+  that reaches a sheet, so a junk `count` on a `set_cell` skips it too. One
+  divergence cannot be removed: `JSON.parse` gives `2` for `2.0`, so a position
+  written `2.0` applies here, where PHP decodes a float and skips the op.
+
+`tests/sheet-ops-parity.test.ts` gains PHP-checked reduce cases for each fix,
+diff cases for a list of widths, a padded cell key and a width key that is not
+an index, and `SheetDiff.same` at 4095 to 4097 levels, which the PHP helper
+builds itself so the nesting never crosses JSON.
+
+**What you must do:** nothing, unless you relied on one of the above. `diff()`
+output changes only for a schema holding a padded cell key or a width key that
+is not an index, where it matches PHP 2.3.3's, and `diff()` now throws on a
+schema holding a value JSON cannot, which JSON input never does.
+
 ## [2.4.1] — 2026-09-15
 
 ### Fixed

@@ -46,7 +46,8 @@ function normalize(value: Any): Any {
   return value;
 }
 
-type Case = { name: string; a?: Any; b?: Any; ops?: Any[]; hunks?: [string[], string[]] };
+type Nested = { leaf: Any; depth: number; map: boolean };
+type Case = { name: string; a?: Any; b?: Any; ops?: Any[]; hunks?: [string[], string[]]; nested?: Nested };
 
 const cases: Case[] = [];
 
@@ -147,6 +148,27 @@ cases.push(
     a: two({ name: "S", cells: { A1: { value: 1 } }, frozenRows: 2, frozenCols: 1, columnWidths: { 2: 30 } }, { name: "T", cells: {} }),
     b: { sheets: [{ name: "S", cells: { A1: { value: 1 } } }, { name: "T", cells: {} }] },
   },
+  // PHP 2.3.2 and 2.3.3.
+  {
+    name: "widths keyed 0..n-1 arrive as a list",
+    a: hsWorkbook(),
+    b: (() => {
+      const w = hsWorkbook();
+      w.sheets[0].columnWidths = [120, 80, 140];
+      return w;
+    })(),
+  },
+  {
+    // clear_cell trims, so it cannot remove the key " A1 " either.
+    name: "a padded cell key",
+    a: two({ name: "S", cells: { " A1 ": { value: 1 }, B2: { value: 5 } } }, { name: "T", cells: { A1: { value: 1 } } }),
+    b: two({ name: "S", cells: { B2: { value: 5 } } }, { name: "T", cells: { A1: { value: 2 } } }),
+  },
+  {
+    name: "a column inserted beside a width key that is not an index",
+    a: { sheets: [{ name: "S", cells: { A1: { value: "x" }, B1: { value: "y" } }, columnWidths: { 0: 10, abc: 999, 1: 20 } }] },
+    b: { sheets: [{ name: "S", cells: { B1: { value: "x" }, C1: { value: "y" } }, columnWidths: { 1: 10, 2: 20 } }] },
+  },
 );
 
 // The alignment on its own: short lines from a two-letter alphabet, so nearly
@@ -216,7 +238,66 @@ cases.push(
     { type: "set_meta", meta: null },
     { type: "nope", sheet: "Q3" },
   ] },
+  // PHP 2.3.2: types, addresses and width keys.
+  { name: "reduce: a type that is not an op type is skipped", a: hsWorkbook(), ops: [
+    { type: true, sheet: "Q3" },
+    { type: 0, sheet: "Q3" },
+    { type: null, sheet: "Notes" },
+    { type: ["remove_sheet"], sheet: "Notes" },
+    { type: "REMOVE_SHEET", sheet: "Notes" },
+  ] },
+  { name: "reduce: a padded address is trimmed", a: hsWorkbook(), ops: [
+    { type: "set_cell", sheet: "Q3", address: " b3 ", value: 1 },
+    { type: "clear_cell", sheet: "Q3", address: "\t a2\n" },
+    { type: "set_cell", sheet: "Q3", address: "\x00c1\x0B", value: 2 },
+    { type: "set_cell", sheet: "Q3", address: "\u00a0c2", value: 3 },
+    { type: "clear_cell", sheet: "Q3", address: "\u00a0A4" },
+    { type: "set_range", sheet: "Q3", start: " d1 ", values: [[4]] },
+  ] },
+  { name: "reduce: width keys that are not indexes are dropped", a: { sheets: [{ name: "S", cells: { B1: { value: 1 } }, columnWidths: { 0: 10, abc: 999, 1: 20, "1.5": 15, "007": 70, "-1": 5, "-0": 6, "": 7, " 2": 8 } }] }, ops: [
+    { type: "insert_columns", sheet: "S", at: 1, count: 1 },
+    { type: "delete_columns", sheet: "S", at: 2, count: 1 },
+  ] },
+  // PHP 2.3.3: positions and counts.
+  { name: "reduce: a position or count that is not a number skips the op", a: hsWorkbook(), ops: [
+    { type: "move_sheet", sheet: "Notes", toIndex: "last" },
+    { type: "add_sheet", index: "end", sheet: { name: "X", cells: {} } },
+    { type: "add_sheet", index: null, sheet: { name: "Y", cells: {} } },
+    { type: "add_sheet", index: -1.5, sheet: { name: "Z", cells: {} } },
+    { type: "set_frozen", sheet: "Q3", rows: "one", cols: 0 },
+    { type: "set_frozen", sheet: "Q3", rows: " 1", cols: 0 },
+    { type: "set_frozen", sheet: "Q3", rows: 0, cols: null },
+    { type: "insert_rows", sheet: "Q3", at: 2, count: "2x" },
+    { type: "insert_rows", sheet: "Q3", at: "", count: 1 },
+    { type: "delete_columns", sheet: "Q3", at: 1.5, count: 1 },
+    { type: "delete_rows", sheet: "Q3", at: "-1", count: 1 },
+    { type: "set_cell", sheet: "Q3", address: "A1", value: "skipped", count: "x" },
+    { type: "remove_sheet", sheet: "Notes", at: null },
+    { type: "rename_sheet", sheet: "Notes", name: "N", toIndex: true },
+  ] },
+  { name: "reduce: ints, digit strings and absent positions still apply", a: hsWorkbook(), ops: [
+    { type: "move_sheet", sheet: "Notes", toIndex: "0" },
+    { type: "add_sheet", sheet: { name: "X", cells: {} } },
+    { type: "add_sheet", index: "01", sheet: { name: "Y", cells: {} } },
+    { type: "add_sheet", index: -3, sheet: { name: "Z", cells: {} } },
+    { type: "insert_rows", sheet: "Q3", at: "2", count: "007" },
+    { type: "set_frozen", sheet: "Q3", cols: "2" },
+    { type: "move_sheet", sheet: "X" },
+    { type: "move_sheet", sheet: "Y", toIndex: 99 },
+    { type: "delete_rows", sheet: "Q3", at: 3 },
+    { type: "delete_columns", sheet: "Q3", at: "1", count: 1 },
+  ] },
 );
+
+// Where json_encode's depth runs out in SheetDiff::same. PHP builds the nesting
+// itself, so none of it crosses JSON.
+for (const leaf of [1, [], "x"]) {
+  for (const map of [false, true]) {
+    for (const depth of [4095, 4096, 4097]) {
+      cases.push({ name: `same: ${JSON.stringify(leaf)} in ${depth} ${map ? "maps" : "lists"}`, nested: { leaf, depth, map } });
+    }
+  }
+}
 
 const HAS_PHP = phpAvailable();
 
@@ -234,7 +315,7 @@ describe.skipIf(!HAS_PHP)("cross-engine ops parity (PHP vs TS)", () => {
   beforeAll(() => {
     const dir = mkdtempSync(join(tmpdir(), "holy-sheet-ops-parity-"));
     const file = join(dir, "cases.json");
-    writeFileSync(file, JSON.stringify(cases.map(({ a, b, ops, hunks }) => (hunks ? { hunks } : ops ? { a, ops } : { a, b }))));
+    writeFileSync(file, JSON.stringify(cases.map(({ a, b, ops, hunks, nested }) => (nested ? { nested } : hunks ? { hunks } : ops ? { a, ops } : { a, b }))));
     results = JSON.parse(php([PHP_SCRIPT, file]).toString("utf8"));
   }, 120_000);
 
@@ -245,6 +326,23 @@ describe.skipIf(!HAS_PHP)("cross-engine ops parity (PHP vs TS)", () => {
   cases.forEach((testCase, index) => {
     it(testCase.name, () => {
       const phpResult = results[index];
+
+      if (testCase.nested !== undefined) {
+        // PHP throws JsonException past its depth; this port must throw there too, and only there.
+        const { leaf, depth, map } = testCase.nested;
+        let value: Any = leaf;
+        for (let i = 0; i < depth; i++) value = map ? { k: value } : [value];
+        let ts: Any;
+        try {
+          ts = { same: SheetDiff.same(value, value) };
+        } catch (error) {
+          ts = { error: String(error) };
+        }
+        expect("error" in ts, `PHP ${JSON.stringify(phpResult)} / TS ${JSON.stringify(ts)}`).toBe("error" in phpResult);
+        if (!("error" in ts)) expect(ts.same).toBe(phpResult.same);
+        return;
+      }
+
       expect(phpResult.error, "PHP threw").toBeUndefined();
 
       if (testCase.hunks !== undefined) {
@@ -285,6 +383,19 @@ describe.skipIf(!HAS_PHP)("cross-engine ops parity (PHP vs TS)", () => {
 
     const lowerCase = cases.findIndex((c) => c.name.startsWith("a lower-case address cannot be cleared"));
     expect(results[lowerCase].ops.map((op: Any) => op.type)).toEqual(["replace_sheet", "set_cell"]);
+  });
+
+  // The depth cases would pass with both engines throwing everywhere, or nowhere.
+  it("finds json_encode's depth limit inside the nested cases, not outside them", () => {
+    const outcomes = cases
+      .map((testCase, index) => [testCase.nested, results[index]] as const)
+      .filter(([nested]) => nested !== undefined)
+      .map(([nested, result]) => `${JSON.stringify(nested!.leaf)} ${nested!.depth}: ${"error" in result ? "throws" : "ok"}`);
+
+    expect(outcomes).toContain("1 4096: ok");
+    expect(outcomes).toContain("1 4097: throws");
+    expect(outcomes).toContain("[] 4095: ok");
+    expect(outcomes).toContain("[] 4096: throws");
   });
 
   it("publishes the same op schema, byte for byte", () => {

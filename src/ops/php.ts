@@ -72,6 +72,36 @@ export function phpString(value: unknown): string {
   return String(value);
 }
 
+/** PHP `trim` with its default set: space, tab, LF, CR, NUL and vertical tab. Not `String#trim`, which strips NBSP and more. */
+export function phpTrim(value: string): string {
+  return value.replace(/^[ \t\n\r\x00\x0B]+|[ \t\n\r\x00\x0B]+$/g, "");
+}
+
+/**
+ * PHP `SheetReducer::integer()`: an int, or a string of digits (`ctype_digit`);
+ * anything else is null.
+ *
+ * One divergence cannot be removed: PHP decodes `2.0` as a float and refuses it,
+ * but `JSON.parse` gives the number 2, which is accepted here. An integer past
+ * PHP's int range is refused, as PHP would have decoded it as a float too.
+ */
+export function phpInteger(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isInteger(value) && Math.abs(value) <= 2 ** 63 ? value || 0 : null;
+  }
+  return typeof value === "string" && /^[0-9]+$/.test(value) ? phpInt(value) : null;
+}
+
+/**
+ * Whether PHP reads `$key` of a `foreach` over `columnWidths` as a column index:
+ * an int key (a canonical decimal string PHP stores as an int, `-1` included) or
+ * a string of digits (`ctype_digit`, so `"007"`). `"abc"`, `"1.5"`, `""` and
+ * `"-0"` are not.
+ */
+export function isIndexKey(key: string): boolean {
+  return /^[0-9]+$/.test(key) || (/^-[1-9][0-9]*$/.test(key) && BigInt(key) >= -(2n ** 63n));
+}
+
 /** PHP `strtoupper` (ASCII only since PHP 8.2, unlike `toUpperCase`). */
 export function asciiUpper(value: string): string {
   return value.replace(/[a-z]+/g, (s) => s.toUpperCase());
@@ -83,7 +113,7 @@ export function asciiUpper(value: string): string {
  * `toUpperCase` are Unicode-aware where PHP's are ASCII.
  */
 export function parseAddress(address: string): [number, number] | null {
-  const m = /^([A-Z]+)(\d+)$/.exec(asciiUpper(address.replace(/^[ \t\n\r\v\0]+|[ \t\n\r\v\0]+$/g, "")));
+  const m = /^([A-Z]+)(\d+)$/.exec(asciiUpper(phpTrim(address)));
   if (!m) return null;
   return [CellAddress.index(m[1]!), parseInt(m[2]!, 10)];
 }

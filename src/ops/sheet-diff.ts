@@ -98,6 +98,21 @@ export const SheetDiff = {
    *   example `columnWidths` decoded from `{"1":140,"0":120}`) as a map, not a
    *   list, and so as different from the same widths in order. A JS object has
    *   no such order to compare.
+   *
+   * Throws a `TypeError` on a value JSON cannot hold, as PHP 2.3.2 throws
+   * `JsonException`, rather than calling two such values the same:
+   *
+   * - a non-finite number (PHP: NAN, INF);
+   * - a lone UTF-16 surrogate in a string or a key, which is this runtime's
+   *   invalid UTF-8 (a JS string cannot hold invalid UTF-8, and PHP's own
+   *   `json_decode` refuses a lone surrogate);
+   * - a function or a symbol, which `JSON.stringify` would silently drop
+   *   (a bigint already throws there);
+   * - nesting deeper than PHP's `json_encode` depth of 4096, where every object
+   *   and array is a level, an empty one included. The walk is iterative, so
+   *   this is PHP's limit and not the call stack's.
+   *
+   * `undefined` stays what JSON makes it: an absent key, and `null` in a list.
    */
   same(a: unknown, b: unknown): boolean {
     return canon(a) === canon(b);
@@ -488,22 +503,95 @@ function rowMajor(addresses: readonly string[]): string[] {
  * PHP's canonical JSON, for equality only: map keys sorted, list order kept, and
  * an array keyed exactly 0..n-1 (every empty one included) written as a list.
  * The key order and escaping differ from PHP's bytes; which values compare
- * equal does not (see `same()` for the two exceptions).
+ * equal does not (see `same()` for the two exceptions, and for what throws).
  */
 function canon(value: unknown): string {
-  if (Array.isArray(value)) {
-    return "[" + value.map(canon).join(",") + "]";
+  return isArr(value) ? canonEntries(entriesFor(value)) : scalar(value);
+}
+
+/** `SheetDiff::canon()` passes `json_encode` this depth explicitly. */
+const JSON_DEPTH = 4096;
+
+type Frame = { key: string; entries: [string, unknown][]; list: boolean; next: number; parts: string[] };
+
+/**
+ * `canon()` of an array given as its entries. A loop over an explicit stack, not
+ * recursion: the call stack runs out before PHP's 4096 levels do.
+ */
+function canonEntries(root: [string, unknown][]): string {
+  const stack: Frame[] = [];
+
+  const open = (key: string, entries: [string, unknown][]): void => {
+    if (stack.length === JSON_DEPTH) {
+      throw unencodable("Maximum stack depth exceeded");
+    }
+    const list = entries.every(([k], i) => k === String(i));
+    if (!list) {
+      entries = entries.slice().sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0));
+    }
+    stack.push({ key, entries, list, next: 0, parts: [] });
+  };
+
+  open("", root);
+
+  for (;;) {
+    const top = stack[stack.length - 1]!;
+
+    if (top.next < top.entries.length) {
+      const [key, item] = top.entries[top.next++]!;
+      if (isArr(item)) {
+        open(key, entriesFor(item));
+      } else {
+        top.parts.push(member(top, key, scalar(item)));
+      }
+      continue;
+    }
+
+    stack.pop();
+    const text = top.list ? "[" + top.parts.join(",") + "]" : "{" + top.parts.join(",") + "}";
+    const parent = stack[stack.length - 1];
+    if (parent === undefined) {
+      return text;
+    }
+    parent.parts.push(member(parent, top.key, text));
   }
-  if (isArr(value)) {
-    return canonEntries(entriesOf(value));
+}
+
+/** An array is always a list, as JSON writes it; an object lists its defined keys. */
+function entriesFor(value: Obj): [string, unknown][] {
+  return Array.isArray(value) ? Array.from(value, (item, i): [string, unknown] => [String(i), item]) : entriesOf(value);
+}
+
+function member(frame: Frame, key: string, text: string): string {
+  return frame.list ? text : quote(key) + ":" + text;
+}
+
+function scalar(value: unknown): string {
+  switch (typeof value) {
+    case "number":
+      if (!Number.isFinite(value)) {
+        throw unencodable("Inf and NaN cannot be JSON encoded");
+      }
+      break;
+    case "string":
+      return quote(value);
+    case "function":
+    case "symbol":
+      throw unencodable(`a ${typeof value} cannot be JSON encoded`);
   }
+  // A bigint throws here, as JSON.stringify's own TypeError; undefined is null.
   return JSON.stringify(value) ?? "null";
 }
 
-function canonEntries(entries: [string, unknown][]): string {
-  if (entries.every(([key], i) => key === String(i))) {
-    return "[" + entries.map(([, item]) => canon(item)).join(",") + "]";
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+function quote(text: string): string {
+  if (LONE_SURROGATE.test(text)) {
+    throw unencodable("Single unpaired UTF-16 surrogate");
   }
-  const sorted = entries.slice().sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0));
-  return "{" + sorted.map(([key, item]) => JSON.stringify(key) + ":" + canon(item)).join(",") + "}";
+  return JSON.stringify(text);
+}
+
+function unencodable(reason: string): TypeError {
+  return new TypeError(`[holy-sheet] cannot compare a value JSON cannot hold: ${reason}`);
 }

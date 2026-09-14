@@ -294,3 +294,128 @@ describe("SheetDiff", () => {
     expect(SheetDiff.same("1", 1)).toBe(false);
   });
 });
+
+/*
+ * PHP holy-sheet 2.3.2's five op fixes and 2.3.3's sixth, ported from the
+ * `it(...)` blocks PHP added at the bottom of SheetOpsTest.php.
+ */
+describe("PHP 2.3.2 and 2.3.3 op fixes", () => {
+  function nest(leaf: unknown, levels: number, map: boolean): unknown {
+    let value = leaf;
+    for (let i = 0; i < levels; i++) value = map ? { k: value } : [value];
+    return value;
+  }
+
+  it("publishes a set_column_widths schema that accepts the list PHP encodes widths 0..n-1 as", () => {
+    // Found by the Python port: 2.3.1 allowed only an EMPTY list, but PHP
+    // encodes widths for columns A, B, C as `[120, 80, 140]`, and a schema read
+    // from PHP's JSON carries them into this port's diff that way.
+    const a = hsWorkbook();
+    const b = hsWorkbook();
+    b.sheets[0].columnWidths = [120, 80, 140];
+
+    const ops = Agent.diff(a, b) as Any[];
+    expect(JSON.stringify(ops[0].columnWidths)).toBe("[120,80,140]");
+
+    const variant = (Agent.opSchema() as Any).oneOf.find((v: Any) => v.properties.type.const === "set_column_widths");
+    const widths = variant.properties.columnWidths;
+
+    expect(widths).not.toHaveProperty("maxItems");
+    expect(widths).toStrictEqual({
+      type: ["object", "array"],
+      items: { type: "number", minimum: 0 },
+      additionalProperties: { type: "number", minimum: 0 },
+    });
+  });
+
+  it("ignores an op whose type is not a string, instead of matching a case loosely", () => {
+    const w = deepFreeze(hsWorkbook());
+
+    expect(Agent.reduce(w, { type: true, sheet: "Q3" } as Any)).toStrictEqual(w);
+    expect(Agent.reduce(w, { type: 0, sheet: "Q3" } as Any)).toStrictEqual(w);
+    expect(Agent.reduce(w, { type: ["remove_sheet"], sheet: "Q3" } as Any)).toStrictEqual(w);
+  });
+
+  it("trims an address, so a padded one reaches the cell it names", () => {
+    const w = deepFreeze(hsWorkbook());
+
+    const set = Agent.reduce(w, { type: "set_cell", sheet: "Q3", address: " b3 ", value: 1 });
+    expect(Object.keys(set.sheets[0].cells)).not.toContain(" B3 ");
+    expect(set.sheets[0].cells.B3).toStrictEqual({ value: 1 });
+
+    const cleared = Agent.reduce(w, { type: "clear_cell", sheet: "Q3", address: " a2 " });
+    expect(cleared.sheets[0].cells).not.toHaveProperty("A2");
+
+    // PHP trim()'s set: space, tab, LF, CR, NUL and vertical tab. Not NBSP.
+    const control = Agent.reduce(w, { type: "set_cell", sheet: "Q3", address: "\t\n\r\x00\x0Bc9\x0B", value: 2 });
+    expect(control.sheets[0].cells.C9).toStrictEqual({ value: 2 });
+    expect(Agent.reduce(w, { type: "set_cell", sheet: "Q3", address: "\u00a0c9", value: 2 })).toStrictEqual(w);
+  });
+
+  it("drops a column-width key that is not a column index, instead of reading it as column A", () => {
+    // A JS object lists "abc" after the integer keys, so reading it as column A
+    // would overwrite 10 with 999.
+    const w = { sheets: [{ name: "S", cells: {}, columnWidths: { 0: 10, abc: 999, 1: 20 } }] };
+
+    const moved = Agent.reduce(w, { type: "insert_columns", sheet: "S", at: 1, count: 1 });
+    expect(moved.sheets[0].columnWidths).toStrictEqual({ 1: 10, 2: 20 });
+
+    // `ctype_digit` keeps a digit string PHP stores as a string key ("007"), and
+    // PHP stores "-1" as the int -1, which is kept too. "1.5", "" and "-0" are
+    // not indexes.
+    const odd = { sheets: [{ name: "S", cells: {}, columnWidths: { "007": 70, "1.5": 15, "": 1, "-0": 2, "-1": 5 } }] };
+    const shifted = Agent.reduce(odd, { type: "delete_columns", sheet: "S", at: 1, count: 1 });
+    expect(shifted.sheets[0].columnWidths).toStrictEqual({ 6: 70, "-1": 5 });
+  });
+
+  it("refuses to compare values JSON cannot hold, instead of calling them the same", () => {
+    // PHP: invalid UTF-8, NAN and INF. A JS string cannot hold invalid UTF-8;
+    // its equivalent is a lone surrogate, which PHP's own json_decode refuses.
+    expect(() => SheetDiff.same("\uD800", "\uD801")).toThrow(TypeError);
+    expect(() => SheetDiff.same({ ["\uDC00"]: 1 }, { ["\uDC01"]: 1 })).toThrow(TypeError);
+    expect(() => SheetDiff.same(NaN, Infinity)).toThrow(TypeError);
+    expect(() => SheetDiff.same({ value: -Infinity }, { value: null })).toThrow(TypeError);
+    expect(() => SheetDiff.same(1, NaN)).toThrow(TypeError);
+    expect(SheetDiff.same("😀", "😀")).toBe(true); // a surrogate PAIR is fine
+
+    // And so does a diff over cells holding them, where it used to record no change.
+    const a = { sheets: [{ name: "S", cells: { A1: { value: NaN } } }] };
+    const b = { sheets: [{ name: "S", cells: { A1: { value: Infinity } } }] };
+    expect(() => Agent.diff(a, b)).toThrow(TypeError);
+  });
+
+  it("compares as deep as PHP's json_encode depth of 4096, and no deeper", () => {
+    // The boundaries PHP 8.4 printed for SheetDiff::same: every array is a
+    // level, an empty one included.
+    for (const map of [false, true]) {
+      expect(SheetDiff.same(nest(1, 4096, map), nest(1, 4096, map))).toBe(true);
+      expect(() => SheetDiff.same(nest(1, 4097, map), 1)).toThrow(TypeError);
+      expect(SheetDiff.same(nest([], 4095, map), nest({}, 4095, map))).toBe(true);
+      expect(() => SheetDiff.same(nest([], 4096, map), 1)).toThrow(TypeError);
+    }
+  });
+
+  it("skips an op whose position or count is not a number, instead of reading it as 0", () => {
+    const w = deepFreeze(hsWorkbook());
+
+    // `(int) "last"` is 0: these moved Notes to the front, inserted a sheet
+    // there, and unfroze the header row.
+    expect(Agent.reduce(w, { type: "move_sheet", sheet: "Notes", toIndex: "last" } as Any)).toStrictEqual(w);
+    expect(Agent.reduce(w, { type: "add_sheet", index: "end", sheet: { name: "X", cells: {} } } as Any)).toStrictEqual(w);
+    expect(Agent.reduce(w, { type: "set_frozen", sheet: "Q3", rows: "one", cols: 0 } as Any)).toStrictEqual(w);
+    expect(Agent.reduce(w, { type: "insert_rows", sheet: "Q3", at: 2, count: "2x" } as Any)).toStrictEqual(w);
+
+    // Present means present: a null position skips the op, and so does a junk
+    // one on an op that reads no position.
+    expect(Agent.reduce(w, { type: "add_sheet", index: null, sheet: { name: "X", cells: {} } } as Any)).toStrictEqual(w);
+    expect(Agent.reduce(w, { type: "set_cell", sheet: "Q3", address: "A1", value: 1, count: "x" } as Any)).toStrictEqual(w);
+    expect(Agent.reduce(w, { type: "delete_rows", sheet: "Q3", at: 1.5, count: 1 } as Any)).toStrictEqual(w);
+
+    // Ints, digit strings and absent defaults still work.
+    expect(Agent.reduce(w, { type: "move_sheet", sheet: "Notes", toIndex: "0" } as Any).sheets[0].name).toBe("Notes");
+    expect(Agent.reduce(w, { type: "add_sheet", sheet: { name: "X", cells: {} } } as Any).sheets[2].name).toBe("X");
+    expect(Agent.reduce(w, { type: "move_sheet", sheet: "Q3" } as Any)).toStrictEqual(w);
+    const frozen = Agent.reduce(w, { type: "set_frozen", sheet: "Q3", cols: "2" } as Any).sheets[0];
+    expect([frozen.frozenRows, frozen.frozenCols]).toEqual([undefined, 2]);
+  });
+});

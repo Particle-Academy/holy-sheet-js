@@ -7,12 +7,16 @@ import {
   has,
   isArr,
   isEmptyArr,
+  isIndexKey,
   letter,
   parseAddress,
   phpInt,
+  phpInteger,
   phpString,
+  phpTrim,
   valuesOf,
 } from "./php";
+import { SheetOpSchema } from "./sheet-op-schema";
 
 /**
  * Apply `SheetOpSchema` ops to a Holy Sheet schema, returning a new schema.
@@ -51,6 +55,12 @@ export const SheetReducer = {
   apply(schema: Any, op: Any): Any {
     const type = get(op, "type");
 
+    // A string naming an op type, compared strictly (PHP 2.3.2, where a loose
+    // `switch` let `type: true` remove a sheet). This port's switch was strict.
+    if (typeof type !== "string" || !(SheetOpSchema.TYPES as readonly string[]).includes(type)) {
+      return schema;
+    }
+
     if (type === "set_workbook") {
       return isArr(get(op, "data")) ? op.data : schema;
     }
@@ -71,8 +81,11 @@ export const SheetReducer = {
       if (!isArr(get(op, "sheet"))) {
         return schema;
       }
-      const index = Math.max(0, Math.min(sheets.length, phpInt(get(op, "index") ?? sheets.length)));
-      sheets.splice(index, 0, op.sheet);
+      const index = has(op, "index") ? phpInteger(op.index) : sheets.length;
+      if (index === null) {
+        return schema;
+      }
+      sheets.splice(Math.max(0, Math.min(sheets.length, index)), 0, op.sheet);
       return { ...schema, sheets };
     }
 
@@ -80,6 +93,15 @@ export const SheetReducer = {
 
     if (at === null) {
       return schema;
+    }
+
+    // Positions and counts are ints or digit strings (PHP 2.3.3). A present
+    // value that is neither skips the op: `(int)` read junk as 0, which moved a
+    // sheet to the front, inserted one there, or unfroze panes.
+    for (const field of POSITION_FIELDS) {
+      if (has(op, field) && phpInteger(op[field]) === null) {
+        return schema;
+      }
     }
 
     switch (type) {
@@ -93,7 +115,7 @@ export const SheetReducer = {
 
       case "move_sheet": {
         const [moved] = sheets.splice(at, 1);
-        const to = Math.max(0, Math.min(sheets.length, phpInt(get(op, "toIndex") ?? at)));
+        const to = Math.max(0, Math.min(sheets.length, phpInteger(get(op, "toIndex") ?? at) ?? at));
         sheets.splice(to, 0, moved);
         break;
       }
@@ -113,8 +135,8 @@ export const SheetReducer = {
         break;
 
       case "set_frozen":
-        sheets[at] = setOrUnset(sheets[at], "frozenRows", phpInt(get(op, "rows") ?? 0), 0);
-        sheets[at] = setOrUnset(sheets[at], "frozenCols", phpInt(get(op, "cols") ?? 0), 0);
+        sheets[at] = setOrUnset(sheets[at], "frozenRows", phpInteger(get(op, "rows") ?? 0) ?? 0, 0);
+        sheets[at] = setOrUnset(sheets[at], "frozenCols", phpInteger(get(op, "cols") ?? 0) ?? 0, 0);
         break;
 
       case "set_cell":
@@ -126,7 +148,7 @@ export const SheetReducer = {
         break;
 
       case "clear_cell": {
-        const address = asciiUpper(phpString(get(op, "address") ?? ""));
+        const address = asciiUpper(phpTrim(phpString(get(op, "address") ?? "")));
         const cells = sheets[at].cells;
         // PHP's `unset($sheet['cells'][$address])` creates nothing when the key is absent.
         if (isArr(cells) && !Array.isArray(cells) && has(cells, address)) {
@@ -138,19 +160,19 @@ export const SheetReducer = {
       }
 
       case "insert_rows":
-        sheets[at] = shiftRows(sheets[at], phpInt(get(op, "at") ?? 0), Math.max(0, phpInt(get(op, "count") ?? 0)));
+        sheets[at] = shiftRows(sheets[at], position(op, "at"), Math.max(0, position(op, "count")));
         break;
 
       case "delete_rows":
-        sheets[at] = shiftRows(sheets[at], phpInt(get(op, "at") ?? 0), -Math.max(0, phpInt(get(op, "count") ?? 0)));
+        sheets[at] = shiftRows(sheets[at], position(op, "at"), -Math.max(0, position(op, "count")));
         break;
 
       case "insert_columns":
-        sheets[at] = shiftColumns(sheets[at], phpInt(get(op, "at") ?? 0), Math.max(0, phpInt(get(op, "count") ?? 0)));
+        sheets[at] = shiftColumns(sheets[at], position(op, "at"), Math.max(0, position(op, "count")));
         break;
 
       case "delete_columns":
-        sheets[at] = shiftColumns(sheets[at], phpInt(get(op, "at") ?? 0), -Math.max(0, phpInt(get(op, "count") ?? 0)));
+        sheets[at] = shiftColumns(sheets[at], position(op, "at"), -Math.max(0, position(op, "count")));
         break;
 
       default:
@@ -160,6 +182,14 @@ export const SheetReducer = {
     return { ...schema, sheets };
   },
 };
+
+/** Op fields that hold a position or a count. */
+const POSITION_FIELDS = ["index", "toIndex", "rows", "cols", "at", "count"] as const;
+
+/** PHP `self::integer($op[$key] ?? 0) ?? 0`, for a field the guard in apply() has checked. */
+function position(op: Obj, key: string): number {
+  return phpInteger(get(op, key) ?? 0) ?? 0;
+}
 
 /** The `[]` a map or list key is removed at. */
 const EMPTY = Symbol("empty");
@@ -193,7 +223,8 @@ function setOrUnset(sheet: Obj, key: string, value: Any, empty: typeof EMPTY | 0
  * - A null write to an absent cell, carrying nothing else, does nothing.
  */
 function setCell(sheet: Obj, op: Obj): Obj {
-  const address = asciiUpper(phpString(get(op, "address") ?? ""));
+  // Trimmed as it is validated (PHP 2.3.2): `" a1 "` is A1, not a key of its own.
+  const address = asciiUpper(phpTrim(phpString(get(op, "address") ?? "")));
 
   if (parseAddress(address) === null) {
     return sheet;
@@ -308,6 +339,11 @@ function shiftColumns(sheet: Obj, at: number, delta: number): Obj {
   if (isArr(get(sheet, "columnWidths"))) {
     const widths = new Map<number, Any>();
     for (const [index, width] of entriesOf(sheet.columnWidths)) {
+      // A key that is not a column index is dropped (PHP 2.3.2), not read as
+      // column 0: `(int) "abc"` overwrote column A's width.
+      if (!isIndexKey(index)) {
+        continue;
+      }
       const i = phpInt(index);
       const number = i + 1;
       if (number < at) {

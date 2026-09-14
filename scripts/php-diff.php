@@ -16,7 +16,10 @@ declare(strict_types=1);
  * case carrying "ops" instead of "b" replays those ops rather than diffing,
  * which pins the reducer on its own. A case {"hunks": [a, b]} answers
  * {"hunks": SheetDiff::hunks(a, b)}, which pins the alignment and its tie-break
- * directly. A case that throws answers {"error": ...}.
+ * directly. A case {"nested": {"leaf": x, "depth": n, "map": bool}} wraps x in
+ * n arrays (lists, or maps under "k") HERE, and answers {"same": SheetDiff::same(v, v)},
+ * which pins where json_encode's depth runs out without sending that nesting
+ * through JSON. A case that throws answers {"error": ...}.
  *
  *   php php-diff.php --op-schema     -> Agent::opSchema()
  */
@@ -49,6 +52,15 @@ $run = static function (array $case): array {
     try {
         if (array_key_exists('hunks', $case)) {
             return ['hunks' => \HolySheet\Ops\SheetDiff::hunks($case['hunks'][0], $case['hunks'][1])];
+        }
+
+        if (array_key_exists('nested', $case)) {
+            $value = $case['nested']['leaf'];
+            for ($i = 0; $i < $case['nested']['depth']; $i++) {
+                $value = $case['nested']['map'] ? ['k' => $value] : [$value];
+            }
+
+            return ['same' => \HolySheet\Ops\SheetDiff::same($value, $value)];
         }
 
         $ops = array_key_exists('ops', $case)

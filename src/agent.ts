@@ -23,7 +23,7 @@ import type { SheetOp } from "./ops/types";
 import toolSchema from "./holy-sheet.schema.json";
 
 /** This package's own version, pinned to package.json by `version.test.ts`. */
-export const VERSION = "2.4.1";
+export const VERSION = "2.4.2";
 
 type Any = any;
 
