@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-10-02
+
+### Fixed
+
+- **A column's own `width` is honoured. It was documented and silently ignored.**
+
+  `skills/holy-sheet.schema.json` — the tool definition handed to an LLM, shared
+  byte-identically with the PHP and Python ports under a checksum test —
+  describes `columns[].width` as *"Column width in pixels. Same as columnWidths
+  but per-column."* Only the sheet-level `columnWidths` map was ever read, so a
+  width written the way the schema documents it emitted **no `<cols>` element at
+  all**: no exception, no validation error, and nothing from `validateAndRepair`.
+  Silent at every layer.
+
+  Reported against the PHP package as **holy-sheet#8** by the MOIC team, whose
+  owner's complaint was "can't style spreadsheets at all". Measured, that was
+  mostly this: the theme, the header fill, the banded rows and the currency
+  formats all landed, but a real account name truncated and a correctly-formatted
+  currency rendered as `#####` — which is what a reader actually sees. Fixed in
+  PHP 2.4.0; this is the matching twin.
+
+  **Precedence, identical to PHP: the sheet-level `columnWidths` map is applied
+  LAST and wins.** It is the mechanism that already worked, so a consumer who
+  moved to it to route around this bug must not then find a leftover `width`
+  quietly overriding them. The two sources merge rather than replace, and `<col>`
+  elements are emitted in ascending column order — merging two sources means
+  insertion order is no longer column order.
+
+  A `width` now goes through the same `ColumnWidths` rule the map already obeyed,
+  so `"abc"` or `-5` is rejected rather than written, and **`validate()` reports
+  it at `sheets[0].columns[0].width`**. That part matters as much as the fix: the
+  original defect's real cost was that an agent composes against the schema doc,
+  gets no error, and never learns the field was dropped.
+
+  **What you must do: nothing, and do not migrate off `columnWidths`.** If you
+  set `width` and saw no effect, it now works. If you moved to `columnWidths`, it
+  still wins. Output bytes change for anyone who had `width` set — which is why
+  this is a minor rather than a patch.
+
+
 ## [2.4.3] — 2026-09-14
 
 ### Fixed

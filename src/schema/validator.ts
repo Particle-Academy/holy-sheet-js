@@ -247,6 +247,23 @@ export class Validator {
       );
     }
 
+    // Until holy-sheet#8 the writer ignored `width` entirely, so an invalid one
+    // and a valid one were equally silent. Now that it is honoured, a width that
+    // cannot be used has to say so — the original defect's real cost was that an
+    // agent composes against the schema doc, gets no error, and never learns the
+    // field was discarded.
+    if (col.width !== undefined && ColumnWidths.width(col.width) === null) {
+      errors.push(
+        error(
+          `${path}.width`,
+          "a non-negative number of pixels",
+          typeOf(col.width),
+          col.width,
+          "A column width is a number of pixels, like 120. The sheet-level columnWidths map takes precedence over it.",
+        ),
+      );
+    }
+
     return errors;
   }
 }

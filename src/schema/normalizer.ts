@@ -127,7 +127,7 @@ export class Normalizer {
       name,
       cells,
       this.normalizeMerges(sheet.mergedRegions ?? []),
-      this.normalizeColumnWidths(sheet.columnWidths ?? {}),
+      this.normalizeWidths(sheet),
       toInt(sheet.frozenRows ?? 0),
       toInt(sheet.frozenCols ?? 0),
     );
@@ -187,6 +187,45 @@ export class Normalizer {
       }
     }
     return out;
+  }
+
+  /**
+   * The two ways a width can be stated, folded into one map.
+   *
+   * `columns[].width` widens the column at that POSITION; the sheet-level
+   * `columnWidths` map keys the same columns by 0-based index. Both have been
+   * described in the shared `skills/holy-sheet.schema.json` ("Same as
+   * columnWidths but per-column") for as long as the field has existed, and only
+   * the map was ever read — so a width written the way the schema documents it
+   * emitted no `<cols>` element at all, with no error and no repair note
+   * (holy-sheet#8, fixed in PHP 2.4.0; this is the twin).
+   *
+   * The MAP IS APPLIED LAST and wins, matching PHP. It is the mechanism that
+   * already worked, so anyone who reached for it to work around this bug must not
+   * now find a leftover `width` quietly overriding it.
+   */
+  private normalizeWidths(sheet: Record<string, Any>): Map<number, number> {
+    const out = new Map<number, number>();
+
+    for (const [colIdx, columnDef] of (sheet.columns ?? []).entries()) {
+      // A string column (`columns: ["Account"]`) is a documented shorthand and
+      // carries no width — reading `.width` off it must not throw.
+      if (columnDef === null || typeof columnDef !== "object") continue;
+      if ((columnDef as Record<string, Any>).width === undefined) continue;
+
+      const index = ColumnWidths.index(colIdx);
+      const width = ColumnWidths.width((columnDef as Record<string, Any>).width);
+      if (index === null || width === null) continue;
+      out.set(index, width);
+    }
+
+    for (const [index, width] of this.normalizeColumnWidths(sheet.columnWidths ?? {})) {
+      out.set(index, width);
+    }
+
+    // `<col>` elements are expected in ascending order, and merging two sources
+    // means insertion order is no longer column order.
+    return new Map([...out.entries()].sort((a, b) => a[0] - b[0]));
   }
 
   private normalizeColumnWidths(widths: Record<string, Any>): Map<number, number> {
