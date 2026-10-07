@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`CHANGELOG.md` is now in the published tarball.** `files` did not whitelist it, so npm never shipped it: a consumer who followed a link to the changelog — from the README, from npm, or from an upgrade guide — found nothing. Nothing for you to do; the file simply arrives from this release on.
 - Dropped `docs` from `files`: it was declared and never existed, so the package claimed to ship it and did not.
 
+### Security
+
+- `source-map-js` is pinned forward to `^1.2.2` via `overrides`. Versions up to
+  1.2.1 allow an event-loop denial of service through indexed source-map section
+  offsets, and it arrives here transitively through the build toolchain.
+  **Nothing for a consumer to do, and no runtime change**: an npm package does
+  not ship a lockfile, so this governs builds OF this repo, not anything
+  installed FROM it. Recorded rather than left silent because the override it
+  sits beside — `shell-quote` `^1.9.0`, added for an earlier advisory — was
+  carried with no note of why, and had drifted back inside the vulnerable range
+  before anyone looked.
+
 ## [2.5.0] — 2026-10-02
 
 ### Fixed
