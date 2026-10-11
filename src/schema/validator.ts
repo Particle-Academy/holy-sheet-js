@@ -140,7 +140,36 @@ export class Validator {
                 "Each row is an array of cell values, in column order.",
               ),
             );
+            return;
           }
+
+          // An ARRAY as a cell value is the holy-sheet#9 shape: a row nested one
+          // level too deep. It must be caught HERE and not left to the writer,
+          // because `validate()` returning no errors for a schema `normalize()`
+          // throws on tells a caller the input is fine and moves the failure to
+          // where it is hardest to attribute. An agent that validates before
+          // writing — which is the whole point of `Agent.validate()` — was being
+          // told to go ahead.
+          //
+          // The test is `Array.isArray`, NOT "is an object": the object cell
+          // form {value, format} has always been legal, and rejecting any
+          // object here would trade this bug for a far worse one — every
+          // formatted cell in every workbook. (PHP distinguishes the two as
+          // `array_is_list` vs an associative array; in JS they are already
+          // different types.) There is a test holding that line.
+          row.forEach((cell: Any, k: number) => {
+            if (Array.isArray(cell)) {
+              errors.push(
+                error(
+                  `${path}.rows[${j}][${k}]`,
+                  "a cell value or a cell object",
+                  "array",
+                  cell,
+                  'This cell is an array, which usually means the row is nested one level too deep: `rows: [[["x"]]]` makes cell A1 an array, where `rows: [["x"]]` makes it "x". For a cell with formatting use the object form: {value: "x", format: {...}}.',
+                ),
+              );
+            }
+          });
         });
       }
     }

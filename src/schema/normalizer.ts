@@ -7,7 +7,8 @@ import { MergedRegion } from "../workbook/merged-region";
 import { Sheet } from "../workbook/sheet";
 import { Workbook } from "../workbook/workbook";
 import { DateConverter } from "../writer/format/date-converter";
-import { isNumericString, isPlainObject, numericStringToNumber } from "../util";
+import { SchemaException } from "../exceptions";
+import { isNumericString, isPlainObject, numericStringToNumber, typeOf } from "../util";
 import type { CellPrimitive } from "./types";
 import { Theme } from "./theme";
 
@@ -68,7 +69,7 @@ export class Normalizer {
         const rowBand = theme.dataFormat(r);
         const merged =
           rowBand !== null ? (columnFormat ? columnFormat.mergeWith(rowBand) : rowBand) : columnFormat;
-        cells.set(address, this.buildCell(address, value, merged));
+        cells.set(address, this.buildCell(address, value, merged, name));
       });
     });
 
@@ -104,7 +105,7 @@ export class Normalizer {
     // rather than swapped, so a cell that only sets `bold` keeps the theme's
     // banding and the column's currency format instead of dropping to bare.
     if (sheet.cells != null) {
-      for (const [address, cell] of this.normalizeCellMap(sheet.cells)) {
+      for (const [address, cell] of this.normalizeCellMap(sheet.cells, name)) {
         const beneath = cells.get(address);
 
         cells.set(
@@ -133,7 +134,7 @@ export class Normalizer {
     );
   }
 
-  private normalizeCellMap(map: Record<string, Any>): Map<string, Cell> {
+  private normalizeCellMap(map: Record<string, Any>, sheetName?: string): Map<string, Cell> {
     const cells = new Map<string, Cell>();
     for (const [address, cellData] of Object.entries(map)) {
       // A bare scalar cell, e.g. {A1: 42} or {A1: "=SUM(B1:B5)"}.
@@ -142,11 +143,15 @@ export class Normalizer {
       // on a number is `undefined`, so `{A1: 42}` wrote a blank cell and a bare
       // formula string vanished outright — no error, just a hole in the sheet.
       // PHP has always had this branch; the port dropped it.
-      if (!isPlainObject(cellData)) {
+      if (!isCellSpec(cellData)) {
         const [bare, formula] = promoteFormula(cellData);
         cells.set(
           address,
-          new Cell(address, formula !== null ? null : this.coerceValue(bare, null), formula),
+          new Cell(
+            address,
+            formula !== null ? null : this.coerceValue(bare, null, address, sheetName),
+            formula,
+          ),
         );
         continue;
       }
@@ -168,7 +173,7 @@ export class Normalizer {
         address,
         new Cell(
           address,
-          this.coerceValue(rawValue, format),
+          this.coerceValue(rawValue, format, address, sheetName),
           cellData?.formula ?? null,
           format,
           comment,
@@ -265,8 +270,13 @@ export class Normalizer {
     }
   }
 
-  private buildCell(address: string, value: Any, columnFormat: CellFormat | null): Cell {
-    if (isPlainObject(value)) {
+  private buildCell(
+    address: string,
+    value: Any,
+    columnFormat: CellFormat | null,
+    sheetName?: string,
+  ): Cell {
+    if (isCellSpec(value)) {
       const cellFormat = isPlainObject(value.format) ? CellFormat.fromInput(value.format) : null;
       const merged = columnFormat ? columnFormat.mergeWith(cellFormat) : cellFormat;
       const comment = isPlainObject(value.comment)
@@ -279,7 +289,7 @@ export class Normalizer {
       const rawValue = value.value ?? null;
       return new Cell(
         address,
-        this.coerceValue(rawValue, merged),
+        this.coerceValue(rawValue, merged, address, sheetName),
         value.formula ?? null,
         merged,
         comment,
@@ -291,13 +301,18 @@ export class Normalizer {
 
     return new Cell(
       address,
-      formula !== null ? null : this.coerceValue(bare, columnFormat),
+      formula !== null ? null : this.coerceValue(bare, columnFormat, address, sheetName),
       formula,
       columnFormat,
     );
   }
 
-  private coerceValue(value: Any, format: CellFormat | null): CellPrimitive {
+  private coerceValue(
+    value: Any,
+    format: CellFormat | null,
+    address = "?",
+    sheetName?: string,
+  ): CellPrimitive {
     if (value === null || value === undefined) return null;
 
     const df = format?.displayFormat;
@@ -315,12 +330,106 @@ export class Normalizer {
       return DateConverter.toSerial(value, true);
     }
 
-    if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
+    // A bigint is a primitive that converts losslessly and deliberately, and
+    // PHP has no counterpart for it to diverge from. Unchanged.
+    if (typeof value === "bigint") {
       return String(value);
+    }
+
+    // PHP's `instanceof Stringable` — an object that says how it becomes a
+    // string. Two exclusions, and BOTH are load-bearing — the first draft of
+    // this guard omitted the array one and its own comment claimed otherwise,
+    // which the test caught:
+    //
+    //   - Gated on `typeof === "object"` so a FUNCTION does not qualify.
+    //     `Function.prototype.toString` IS its own and returns the function's
+    //     SOURCE TEXT, so a bare "has a custom toString" test writes a code
+    //     listing into the cell.
+    //   - `Array.isArray` excluded explicitly, because
+    //     `Array.prototype.toString` is ALSO its own — and its joining is
+    //     precisely the corruption this guard exists to stop. "Has a custom
+    //     toString" is true of the one value that must never pass here.
+    if (typeof value === "object" && !Array.isArray(value) && hasOwnToString(value)) {
+      return String(value);
+    }
+
+    // REFUSE rather than cast. This used to read "not a primitive, so it must
+    // be safe to stringify", and an ARRAY reaches it whenever a plain `rows`
+    // form is nested one level too deep -- no object-cell syntax required,
+    // which is exactly the shape an AI-generated edit produces.
+    //
+    // In THIS runtime the cast was the dangerous kind of wrong: `["x"]` became
+    // "x", which is what the author probably meant, and `["x","y"]` became
+    // "x,y" -- two cells merged into one, with the data intact enough to look
+    // deliberate. The PHP twin wrote the visibly-wrong "Array", which someone
+    // files a bug about. holy-sheet-js#2, mirroring holy-sheet#9 from MOIC
+    // production.
+    //
+    // The path is the cell's `Sheet!A1` location, not the `sheets[0].rows[1]`
+    // schema path Validator uses. Deliberate, and the one place the two
+    // conventions differ: this fault is always ONE CELL, and the A1 location is
+    // what an operator and an agent can both act on -- the production report
+    // was that the error named no cell, not that it failed.
+    if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
+      const where = sheetName === undefined ? address : `${sheetName}!${address}`;
+      const got = typeOf(value);
+
+      throw SchemaException.fromErrors([
+        {
+          path: where,
+          expected: "a string, number, bool, null, Date, or an object with its own toString",
+          got,
+          value,
+          hint: Array.isArray(value)
+            ? 'This cell holds an array. The usual cause is a `rows` entry nested one level too deep: `rows: [[["x"]]]` makes cell A1 an array, where `rows: [["x"]]` makes it the string "x". For a cell with formatting use the object form: {value: "x", format: {...}}.'
+            : "Give the cell a scalar or a Date, or define toString() on the object so the conversion is yours rather than implicit.",
+        },
+      ]);
+      // No second argument: `fromErrors()` takes only the error list and
+      // ignores a message, matching PHP. `summarize()` already renders
+      // "schema invalid at {path}: expected X, got Y", the format every other
+      // schema error in this package uses.
     }
 
     return value;
   }
+}
+
+/**
+ * Is this the `{value, format, comment, ...}` CELL SPEC, rather than a value
+ * that merely happens to be an object?
+ *
+ * This replaced `isPlainObject`, which is `typeof === "object" && !null &&
+ * !Array.isArray` and therefore true for EVERY non-array object — so a `Date`,
+ * a class instance and a `Map` were all read as a cell spec, their `.value` was
+ * `undefined`, and the cell came out EMPTY. Measured against the PHP reference
+ * on `rows: [[new Date(2026, 0, 2)]]`: PHP wrote the serial 46024, this port
+ * wrote an empty cell. A date in a plain row is the most ordinary non-string
+ * cell there is, and the byte-parity suite never saw it because its fixtures
+ * carry ISO date STRINGS rather than Date objects.
+ *
+ * PHP's test is `is_array($v) && !array_is_list($v)` — an associative array.
+ * The faithful mirror is a plain object LITERAL, which is also what
+ * `JSON.parse` produces for every schema that arrives as JSON. Anything with
+ * its own prototype (Date, Map, a class instance) is a VALUE and belongs to
+ * `coerceValue`; a null-prototype object is not a cell spec either, and is
+ * refused there rather than silently emptied.
+ */
+function isCellSpec(value: unknown): value is Record<string, Any> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  return Object.getPrototypeOf(value) === Object.prototype;
+}
+
+/**
+ * Does this object define how it becomes a string, rather than inheriting
+ * `Object.prototype.toString` (which yields "[object Object]") or having no
+ * `toString` at all (a null-prototype object, which THROWS on conversion)?
+ *
+ * Deliberately not `"toString" in value`: that is true for every object.
+ */
+function hasOwnToString(value: object): boolean {
+  const fn = (value as { toString?: unknown }).toString;
+  return typeof fn === "function" && fn !== Object.prototype.toString;
 }
 
 /**

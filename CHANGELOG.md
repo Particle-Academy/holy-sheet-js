@@ -1,13 +1,99 @@
 # Changelog
 
-All notable changes to `@particle-academy/holy-sheet-js` are documented here.
+All notable changes to `@particle-academy/holy-sheet` are documented here.
+(The repository is `holy-sheet-js`; the published package has never carried the
+`-js` suffix, and this line used to say it did — a name a consumer would have
+typed into `npm install` and got a 404 for.)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-10-11
+
 ### Fixed
+
+- **A cell value that cannot be represented is REFUSED and names the cell,
+  instead of being silently stringified. In this runtime the old behaviour wrote
+  `"x"` for the cell `["x"]` — the corruption looked correct.** Mirrors the PHP
+  reference fix in `particle-academy/holy-sheet` 2.5.0 ([holy-sheet#9], reported
+  from MOIC production); tracked here as [#2].
+
+  `coerceValue()` ended with "not a primitive, so it must be safe to stringify":
+
+  ```ts
+  if (typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean") {
+    return String(v);   // an ARRAY reaches this line
+  }
+  ```
+
+  An array gets there whenever a plain `rows` form is nested one level too
+  deep — `rows: [[["x"]]]` instead of `rows: [["x"]]`. No object-cell syntax is
+  needed, which is exactly the shape an AI-generated edit produces.
+
+  **Why this port's version was worse than PHP's.** `Array.prototype.toString`
+  joins, so a one-level nesting produced *exactly what the author meant*:
+
+  | cell | before | PHP before its fix |
+  |---|---|---|
+  | `["x"]` | `"x"` | `"Array"` |
+  | `["x","y"]` | `"x,y"` | `"Array"` |
+
+  PHP wrote visible garbage, which someone files a bug about. This wrote a
+  workbook that was silently, undetectably correct-looking — and for a
+  two-element row it merged two cells into one with the data intact enough to
+  look deliberate. A wrong answer that looks right is the expensive kind.
+
+  The guard now accepts an object that defines its own `toString` (PHP's
+  `Stringable`) and refuses everything else, with **two exclusions that are both
+  load-bearing**: a function, because `Function.prototype.toString` returns the
+  function's SOURCE TEXT — the old code wrote a code listing into the cell — and
+  an array, because `Array.prototype.toString` is *also* "its own", so "has a
+  custom toString" is true of the one value that must never pass. A symbol is
+  refused too, where it previously wrote `"Symbol(x)"`.
+
+  The refusal is a `SchemaException` whose structured error names the cell as
+  `Sheet!A1`, with a hint explaining the nesting mistake. That differs from the
+  `sheets[0].rows[1]` schema path used elsewhere, deliberately: this fault is
+  always one cell, and the A1 location is what an operator can act on.
+
+- **A `Date`, or any object with a `toString`, in a plain `rows` row no longer
+  writes an EMPTY CELL.** Found while fixing the above, and it is the more
+  ordinary bug of the two.
+
+  The cell-spec dispatcher tested `isPlainObject(value)` — `typeof === "object"
+  && !null && !Array.isArray` — which is true for **every** non-array object. So
+  a `Date`, a class instance and a `Map` were all read as the `{value, format}`
+  cell-spec form, `value.value` was `undefined`, and the cell came out blank: no
+  error, no validation failure, just a hole where the date should be. PHP's
+  equivalent guard is `is_array && !array_is_list`, and a PHP
+  `DateTimeInterface` is an object rather than an array, so it fell straight
+  through to the date branch and wrote the serial. **The pair's contract is
+  "same bytes either backend", and the byte-parity suite never saw this because
+  its fixtures carry ISO date *strings* rather than `Date` objects.**
+
+  The dispatcher now claims only a plain object literal — which is also what
+  `JSON.parse` produces for every schema arriving as JSON — and anything with
+  its own prototype is treated as a value.
+
+- **`validate()` no longer passes a schema that `normalize()` will throw on.**
+  The same input returned **zero** validation errors, so `Agent.validate()` told
+  a caller the workbook was fine and the write then failed — moving the failure
+  to where it is hardest to attribute, in the exact validate-then-write order an
+  agent uses. `Validator` now reports `sheets[0].rows[0][0]` for an array cell.
+
+  The check is `Array.isArray`, **not** "is an object": the object cell form
+  `{value, format}` has always been legal, and rejecting any object would have
+  traded this bug for a far worse one — every formatted cell in every workbook.
+  There is a test holding that line.
+
+  **What you must do:** nothing, if your cells were already scalars, dates or
+  cell objects. If any schema you build can nest a row one level too deep, you
+  now get a `SchemaException` naming the cell where you previously got a
+  workbook with the joined value in it — read `getErrors()[0].path` for the
+  address. Released as a MINOR rather than a patch because that throw is
+  observable to a caller whose input the validator previously accepted.
 
 - **`CHANGELOG.md` is now in the published tarball.** `files` did not whitelist it, so npm never shipped it: a consumer who followed a link to the changelog — from the README, from npm, or from an upgrade guide — found nothing. Nothing for you to do; the file simply arrives from this release on.
 - Dropped `docs` from `files`: it was declared and never existed, so the package claimed to ship it and did not.
@@ -23,6 +109,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sits beside — `shell-quote` `^1.9.0`, added for an earlier advisory — was
   carried with no note of why, and had drifted back inside the vulnerable range
   before anyone looked.
+
+[#2]: https://github.com/Particle-Academy/holy-sheet-js/issues/2
+[holy-sheet#9]: https://github.com/Particle-Academy/holy-sheet/issues/9
 
 ## [2.5.0] — 2026-10-02
 
