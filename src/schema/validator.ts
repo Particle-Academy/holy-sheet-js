@@ -1,6 +1,9 @@
 import { SchemaException } from "../exceptions";
 import { isNumericString, isPlainObject, numericStringToNumber, typeOf } from "../util";
+import { CellAddress } from "../workbook/cell-address";
+import { ChartRange } from "../workbook/chart-range";
 import { ColumnWidths } from "./column-widths";
+import { CHART_TYPES } from "./normalizer";
 import { Repairer } from "./repairer";
 import type { RepairResult, ValidationError } from "./types";
 
@@ -262,6 +265,10 @@ export class Validator {
       }
     }
 
+    if (sheet.charts != null) {
+      errors.push(...validateCharts(sheet.charts, path, typeof sheet.name === "string" ? sheet.name : ""));
+    }
+
     if (sheet.print != null) {
       const print = sheet.print as Record<string, unknown>;
       if (!isPlainObject(print) && !Array.isArray(print)) {
@@ -347,6 +354,75 @@ export class Validator {
 
     return errors;
   }
+}
+
+/** Mirrors PHP Validator::validateCharts, path, expectation and hint for each. */
+function validateCharts(charts: unknown, path: string, sheetName: string): ValidationError[] {
+  if (!Array.isArray(charts)) {
+    return [
+      error(`${path}.charts`, "a list of charts", typeOf(charts), charts,
+        'charts is a list: [{"type": "column", "categories": "A5:A7", "series": [{"name": "Revenue", "values": "B5:B7"}]}].'),
+    ];
+  }
+  const errors: ValidationError[] = [];
+  charts.forEach((chart: unknown, i: number) => {
+    const at = `${path}.charts[${i}]`;
+    if (!isPlainObject(chart) && !Array.isArray(chart)) {
+      errors.push(error(at, "object", typeOf(chart), chart, "A chart is an object with a type and series."));
+      return;
+    }
+    const c = chart as Record<string, unknown>;
+    if (!(CHART_TYPES as readonly unknown[]).includes(c.type)) {
+      errors.push(error(`${at}.type`, "one of: " + CHART_TYPES.join(", "), typeOf(c.type ?? null), c.type ?? null,
+        "column compares values across categories; bar does the same horizontally (long labels); line shows change over time; pie shows parts of one whole."));
+    }
+    const series = c.series;
+    if (!Array.isArray(series) || series.length === 0) {
+      errors.push(error(`${at}.series`, "a non-empty list of series", typeOf(series ?? null), series ?? null,
+        'Each series names the range it plots: [{"name": "Revenue", "values": "B5:B7"}].'));
+    } else {
+      series.forEach((s: unknown, j: number) => {
+        const isObj = isPlainObject(s) || Array.isArray(s);
+        const values = isObj ? (s as Record<string, unknown>).values ?? null : s;
+        if (!isObj || ChartRange.parse(values, sheetName) === null) {
+          errors.push(error(`${at}.series[${j}].values`, 'a cell range like "B5:B7"', typeOf(values), values,
+            "A range of cells: \"B5:B7\" on this sheet, or \"'Other sheet'!B5:B7\"."));
+        } else {
+          const color = (s as Record<string, unknown>).color;
+          if (color != null && (typeof color !== "string" || !/^#[0-9A-Fa-f]{6}$/.test(color))) {
+            errors.push(error(`${at}.series[${j}].color`, "#RRGGBB", typeOf(color), color, 'A hex colour, like "#1F3A5F".'));
+          }
+        }
+      });
+    }
+    if (c.categories != null && ChartRange.parse(c.categories, sheetName) === null) {
+      errors.push(error(`${at}.categories`, 'a cell range like "A5:A7"', typeOf(c.categories), c.categories,
+        'The labels along the axis, as a range: "A5:A7".'));
+    }
+    if (c.position != null) {
+      const p = c.position as Record<string, unknown>;
+      const isObj = isPlainObject(p) || Array.isArray(p);
+      const a = isObj && typeof p.from === "string" ? CellAddress.parse(p.from) : null;
+      const b = isObj && typeof p.to === "string" ? CellAddress.parse(p.to) : null;
+      if (a === null || b === null || b[0] <= a[0] || b[1] <= a[1]) {
+        errors.push(error(`${at}.position`, '{"from": top-left cell, "to": bottom-right cell}', typeOf(p), p,
+          'Two cells, the second below and to the right of the first: {"from": "E2", "to": "L18"} is 7 columns by 16 rows.'));
+      }
+    }
+    for (const key of ["title", "format"]) {
+      if (c[key] != null && typeof c[key] !== "string") {
+        errors.push(error(`${at}.${key}`, "string", typeOf(c[key]), c[key],
+          key === "format" ? 'An Excel number format for the axis and labels, like "$#,##0" or "0.0%".' : "The chart title."));
+      }
+    }
+    for (const key of ["dataLabels", "legend"]) {
+      if (c[key] != null && typeof c[key] !== "boolean") {
+        errors.push(error(`${at}.${key}`, "boolean", typeOf(c[key]), c[key],
+          key === "dataLabels" ? "true prints each value on the chart." : "Defaults to on for several series or a pie."));
+      }
+    }
+  });
+  return errors;
 }
 
 function error(

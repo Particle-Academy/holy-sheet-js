@@ -4,7 +4,8 @@ import { ColumnWidths } from "./column-widths";
 import { CellComment } from "../workbook/cell-comment";
 import { CellFormat } from "../workbook/cell-format";
 import { MergedRegion } from "../workbook/merged-region";
-import { Sheet, type PrintSetup } from "../workbook/sheet";
+import { Sheet, type NormalizedChart, type PrintSetup } from "../workbook/sheet";
+import { ChartRange } from "../workbook/chart-range";
 import { Workbook } from "../workbook/workbook";
 import { DateConverter } from "../writer/format/date-converter";
 import { SchemaException } from "../exceptions";
@@ -133,6 +134,7 @@ export class Normalizer {
       toInt(sheet.frozenCols ?? 0),
       normalizeRowHeights(sheet.rowHeights),
       normalizePrint(sheet.print),
+      normalizeCharts(sheet.charts, name, cells),
     );
   }
 
@@ -454,6 +456,60 @@ function promoteFormula(value: Any): [Any, string | null] {
 function toInt(v: unknown): number {
   const n = Math.trunc(Number(v));
   return Number.isFinite(n) ? n : 0;
+}
+
+/** The chart types the writer draws. Mirrors PHP Normalizer::CHART_TYPES. */
+export const CHART_TYPES = ["column", "bar", "line", "pie"] as const;
+
+/** `charts`, normalised. Mirrors PHP Normalizer::normalizeCharts rule for rule. */
+export function normalizeCharts(charts: unknown, sheetName: string, cells: Map<string, Cell>): NormalizedChart[] {
+  if (!isPlainObject(charts) && !Array.isArray(charts)) return [];
+  let lastCol = -1;
+  for (const address of cells.keys()) {
+    const parsed = CellAddress.parse(address);
+    if (parsed !== null) lastCol = Math.max(lastCol, parsed[0]);
+  }
+
+  const out: NormalizedChart[] = [];
+  for (const chart of Object.values(charts as Record<string, unknown>)) {
+    if (!isPlainObject(chart) || !(CHART_TYPES as readonly unknown[]).includes(chart.type)) continue;
+    const series: NormalizedChart["series"] = [];
+    const rawSeries = isPlainObject(chart.series) || Array.isArray(chart.series) ? Object.values(chart.series as Record<string, unknown>) : [];
+    for (const s of rawSeries) {
+      const values = isPlainObject(s) || Array.isArray(s) ? ChartRange.parse((s as Record<string, unknown>).values, sheetName) : null;
+      if (values === null) continue;
+      const rec = s as Record<string, unknown>;
+      const m = typeof rec.color === "string" ? /^#([0-9A-Fa-f]{6})$/.exec(rec.color) : null;
+      series.push({ name: typeof rec.name === "string" ? rec.name : null, values, color: m ? m[1]!.toUpperCase() : null });
+    }
+    if (series.length === 0) continue;
+
+    const stack = out.length;
+    let from: [number, number] = [lastCol + 2, 1 + 18 * stack];
+    let to: [number, number] = [from[0] + 8, from[1] + 16];
+    if (isPlainObject(chart.position) || Array.isArray(chart.position)) {
+      const p = chart.position as Record<string, unknown>;
+      const a = typeof p.from === "string" ? CellAddress.parse(p.from) : null;
+      const b = typeof p.to === "string" ? CellAddress.parse(p.to) : null;
+      if (a !== null && b !== null && b[0] > a[0] && b[1] > a[1]) {
+        from = [a[0], a[1] - 1];
+        to = [b[0], b[1] - 1];
+      }
+    }
+
+    out.push({
+      type: chart.type as NormalizedChart["type"],
+      title: typeof chart.title === "string" && chart.title !== "" ? chart.title : null,
+      categories: ChartRange.parse(chart.categories, sheetName),
+      series,
+      from,
+      to,
+      legend: typeof chart.legend === "boolean" ? chart.legend : null,
+      dataLabels: chart.dataLabels === true,
+      format: typeof chart.format === "string" && chart.format !== "" ? chart.format : null,
+    });
+  }
+  return out;
 }
 
 /** PHP `is_numeric`: a finite number or a numeric string. */

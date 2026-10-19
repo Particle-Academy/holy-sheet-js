@@ -1,5 +1,6 @@
 import type { CellComment } from "../workbook/cell-comment";
-import type { Sheet } from "../workbook/sheet";
+import type { NormalizedChart, Sheet } from "../workbook/sheet";
+import { ChartParser } from "./chart-parser";
 import { Workbook } from "../workbook/workbook";
 import { unzipSync } from "../zip";
 import { CommentsParser } from "./comments-parser";
@@ -65,7 +66,29 @@ export class XlsxReader {
         }
       }
 
-      sheets.push(WorksheetParser.parse(worksheetXml, name, stylesIndex, comments, sharedStrings));
+      let sheet = WorksheetParser.parse(worksheetXml, name, stylesIndex, comments, sharedStrings);
+
+      // Charts: sheet rels -> drawing -> drawing rels -> chart parts (see PHP).
+      if (sheetRelsXml) {
+        const charts: NormalizedChart[] = [];
+        for (const dr of Object.values(RelsParser.byType(RelsParser.parse(sheetRelsXml), "/drawing"))) {
+          const drawingPath = resolveRelativePath(sheetPath, dr.Target);
+          const slash = drawingPath.lastIndexOf("/");
+          const drawingXml = getText(drawingPath);
+          const drawingRelsXml = getText(drawingPath.slice(0, slash) + "/_rels/" + drawingPath.slice(slash + 1) + ".rels");
+          if (drawingXml === null || drawingRelsXml === null) continue;
+          const drawingRels = RelsParser.parse(drawingRelsXml);
+          for (const anchor of ChartParser.anchors(drawingXml)) {
+            const target = drawingRels[anchor.rel]?.Target;
+            const chartXml = typeof target === "string" ? getText(resolveRelativePath(drawingPath, target)) : null;
+            const chart = chartXml !== null ? ChartParser.chart(chartXml, name, anchor.from, anchor.to) : null;
+            if (chart !== null) charts.push(chart);
+          }
+        }
+        if (charts.length > 0) sheet = sheet.withCharts(charts);
+      }
+
+      sheets.push(sheet);
       i++;
     }
 

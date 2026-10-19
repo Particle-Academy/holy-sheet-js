@@ -6,6 +6,7 @@ import { xmlEscape } from "../xml";
 import { formatFloat } from "../util";
 import { zipSync, type ZipFile } from "../zip";
 import { StylesRegistry } from "./styles-registry";
+import { ChartXml } from "./chart-xml";
 
 const encoder = new TextEncoder();
 
@@ -26,6 +27,10 @@ export function footerCodes(footer: { left: string; center: string; right: strin
     }
   }
   return codes;
+}
+
+function drawingRelId(comments: boolean): string {
+  return comments ? "rId3" : "rId1";
 }
 
 /** A number as the shortest decimal, PHP number_format(x, 4) trimmed: 24 -> "24". */
@@ -59,13 +64,30 @@ export class XlsxWriter {
     add("docProps/core.xml", this.coreXml(workbook));
     add("docProps/app.xml", this.appXml());
 
+    // Charts are numbered across the workbook in sheet order (see PHP).
+    const firstChart: number[] = [];
+    let next = 1;
+    workbook.sheets.forEach((sheet, i) => {
+      firstChart[i] = next;
+      next += sheet.charts.length;
+    });
+
     workbook.sheets.forEach((sheet, i) => {
       const n = i + 1;
       add(`xl/worksheets/sheet${n}.xml`, sheetXmls[i]!);
+      if (sheet.hasComments() || sheet.charts.length > 0) {
+        add(`xl/worksheets/_rels/sheet${n}.xml.rels`, this.sheetRelsXml(n, sheet.hasComments(), sheet.charts.length > 0));
+      }
       if (sheet.hasComments()) {
-        add(`xl/worksheets/_rels/sheet${n}.xml.rels`, this.sheetRelsXml(n));
         add(`xl/comments${n}.xml`, this.commentsXml(sheet));
         add(`xl/drawings/vmlDrawing${n}.vml`, this.vmlDrawingXml(sheet));
+      }
+      if (sheet.charts.length > 0) {
+        add(`xl/drawings/drawing${n}.xml`, ChartXml.drawing(sheet.charts, firstChart[i]!));
+        add(`xl/drawings/_rels/drawing${n}.xml.rels`, ChartXml.drawingRels(sheet.charts, firstChart[i]!));
+        sheet.charts.forEach((chart, k) => {
+          add(`xl/charts/chart${firstChart[i]! + k}.xml`, ChartXml.chart(chart, workbook));
+        });
       }
     });
 
@@ -88,6 +110,17 @@ export class XlsxWriter {
       const n = i + 1;
       overrides += `<Override PartName="/xl/comments${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml"/>`;
     }
+
+    let chartNum = 1;
+    workbook.sheets.forEach((sheet, i) => {
+      if (sheet.charts.length === 0) return;
+      const n = i + 1;
+      overrides += `<Override PartName="/xl/drawings/drawing${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`;
+      for (let k = 0; k < sheet.charts.length; k++) {
+        overrides += `<Override PartName="/xl/charts/chart${chartNum}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`;
+        chartNum++;
+      }
+    });
 
     let defaults =
       '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
@@ -147,12 +180,21 @@ export class XlsxWriter {
     );
   }
 
-  private sheetRelsXml(sheetNum: number): string {
+  /** Comments keep rId1 (vml) and rId2 (comments); the chart drawing takes the next id. */
+  private sheetRelsXml(sheetNum: number, comments: boolean, charts: boolean): string {
+    let rels = "";
+    if (comments) {
+      rels +=
+        `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="../drawings/vmlDrawing${sheetNum}.vml"/>` +
+        `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments${sheetNum}.xml"/>`;
+    }
+    if (charts) {
+      rels += `<Relationship Id="${drawingRelId(comments)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing${sheetNum}.xml"/>`;
+    }
     return (
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-      `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="../drawings/vmlDrawing${sheetNum}.vml"/>` +
-      `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments${sheetNum}.xml"/>` +
+      rels +
       "</Relationships>"
     );
   }
@@ -232,6 +274,7 @@ export class XlsxWriter {
       mergesXml +
       pageSetupXml +
       headerFooterXml +
+      (sheet.charts.length > 0 ? `<drawing r:id="${drawingRelId(sheet.hasComments())}"/>` : "") +
       legacyDrawing +
       "</worksheet>"
     );

@@ -2,7 +2,8 @@ import { isNumericString } from "../util";
 import type { Cell } from "../workbook/cell";
 import type { CellComment } from "../workbook/cell-comment";
 import type { CellFormat } from "../workbook/cell-format";
-import type { Sheet } from "../workbook/sheet";
+import type { NormalizedChart, Sheet } from "../workbook/sheet";
+import { CellAddress } from "../workbook/cell-address";
 import type { Workbook } from "../workbook/workbook";
 import { DateInverter } from "./format/date-inverter";
 
@@ -57,6 +58,31 @@ function sheetToSchema(sheet: Sheet): Record<string, unknown> {
     }
     out["print"] = print;
   }
+  if (sheet.charts.length > 0) {
+    out["charts"] = sheet.charts.map((c) => chartToSchema(c, sheet.name));
+  }
+  return out;
+}
+
+/** A normalised chart in the schema's form. Mirrors PHP WorkbookSchema::chartToSchema. */
+function chartToSchema(chart: NormalizedChart, sheetName: string): Record<string, unknown> {
+  const out: Record<string, unknown> = { type: chart.type };
+  if (chart.title !== null) out["title"] = chart.title;
+  if (chart.categories !== null) out["categories"] = chart.categories.toSchema(sheetName);
+  out["series"] = chart.series.map((s) => {
+    const series: Record<string, unknown> = {};
+    if (s.name !== null) series["name"] = s.name;
+    series["values"] = s.values.toSchema(sheetName);
+    if (s.color !== null) series["color"] = "#" + s.color;
+    return series;
+  });
+  out["position"] = {
+    from: CellAddress.letter(chart.from[0]) + (chart.from[1] + 1),
+    to: CellAddress.letter(chart.to[0]) + (chart.to[1] + 1),
+  };
+  if (chart.dataLabels) out["dataLabels"] = true;
+  if (chart.legend !== null) out["legend"] = chart.legend;
+  if (chart.format !== null) out["format"] = chart.format;
   return out;
 }
 

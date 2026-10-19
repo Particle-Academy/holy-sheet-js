@@ -94,6 +94,22 @@ export interface SheetSchema {
     /** `{page}` / `{pages}` print the page number and count. */
     footer?: { left?: string; center?: string; right?: string };
   };
+  /** Native charts drawn over cell ranges; they stay live when the cells change. */
+  charts?: ChartSchema[];
+}
+
+export interface ChartSchema {
+  type: "column" | "bar" | "line" | "pie";
+  title?: string;
+  /** Axis labels, e.g. "A5:A7" or "'Other sheet'!A5:A7". */
+  categories?: string;
+  series: { name?: string; values: string; color?: string }[];
+  /** Top-left and bottom-right cells; defaults to beside the data. */
+  position?: { from: string; to: string };
+  dataLabels?: boolean;
+  legend?: boolean;
+  /** Excel number format for the axis and labels, e.g. "$#,##0". */
+  format?: string;
 }
 
 export interface HolySheetSchema {
