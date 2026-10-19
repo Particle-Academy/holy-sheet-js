@@ -1,3 +1,4 @@
+import agentGuide from "./agent-guide.json";
 import { ArrayBuilder } from "./helpers/array-builder";
 import { CsvBuilder } from "./helpers/csv-builder";
 import { FormulaLinter } from "./schema/formula-linter";
@@ -23,7 +24,7 @@ import type { SheetOp } from "./ops/types";
 import toolSchema from "./holy-sheet.schema.json";
 
 /** This package's own version, pinned to package.json by `version.test.ts`. */
-export const VERSION = "2.9.0";
+export const VERSION = "2.10.0";
 
 type Any = any;
 
@@ -154,6 +155,15 @@ export const Agent = {
    */
   equivalent(a: Any, b: Any): boolean {
     return SheetDiff.equivalent(a, b);
+  },
+
+  /**
+   * The agent guide: what makes this kind of file professional, and the schema
+   * idioms that produce it. Give it to a model with the schema; it works with any
+   * agent loop. Byte-identical to the PHP package's agent-guide/professional-workbooks.md.
+   */
+  guide(): string {
+    return (agentGuide as { guide: string }).guide;
   },
 
   version(): string {
