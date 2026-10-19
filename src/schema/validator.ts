@@ -1,5 +1,5 @@
 import { SchemaException } from "../exceptions";
-import { isPlainObject, typeOf } from "../util";
+import { isNumericString, isPlainObject, numericStringToNumber, typeOf } from "../util";
 import { ColumnWidths } from "./column-widths";
 import { Repairer } from "./repairer";
 import type { RepairResult, ValidationError } from "./types";
@@ -236,6 +236,58 @@ export class Validator {
                 "A width is a number of pixels, like 120.",
               ),
             );
+          }
+        }
+      }
+    }
+
+    // Mirrors PHP Validator, path and message for path and message.
+    if (sheet.rowHeights != null) {
+      if (!isPlainObject(sheet.rowHeights) && !Array.isArray(sheet.rowHeights)) {
+        errors.push(
+          error(`${path}.rowHeights`, "object keyed by 1-based row number", typeOf(sheet.rowHeights), sheet.rowHeights,
+            'Row heights map a row NUMBER to pixels: {"1": 32, "4": 28}.'),
+        );
+      } else {
+        for (const [row, px] of Object.entries(sheet.rowHeights as Record<string, unknown>)) {
+          const n = typeof px === "number" ? px : isNumericString(px) ? numericStringToNumber(px as string) : null;
+          if (!/^[1-9]\d{0,6}$/.test(row)) {
+            errors.push(error(`${path}.rowHeights.${row}`, "a 1-based row number", typeOf(row), row,
+              'Keys are row numbers as Excel shows them: "1" is the first row.'));
+          } else if (n === null || !Number.isFinite(n) || n < 0) {
+            errors.push(error(`${path}.rowHeights.${row}`, "a non-negative number of pixels", typeOf(px), px,
+              "A height is a number of pixels, like 28 (20 is a default row)."));
+          }
+        }
+      }
+    }
+
+    if (sheet.print != null) {
+      const print = sheet.print as Record<string, unknown>;
+      if (!isPlainObject(print) && !Array.isArray(print)) {
+        errors.push(error(`${path}.print`, "object {orientation?, fitToWidth?, footer?}", typeOf(print), print,
+          'Print setup: {"orientation": "landscape", "fitToWidth": true, "footer": {"right": "Page {page} of {pages}"}}.'));
+      } else {
+        if (print.orientation != null && print.orientation !== "portrait" && print.orientation !== "landscape") {
+          errors.push(error(`${path}.print.orientation`, "one of: portrait, landscape", typeOf(print.orientation), print.orientation,
+            "Use landscape for a sheet wider than it is tall."));
+        }
+        if (print.fitToWidth != null && typeof print.fitToWidth !== "boolean") {
+          errors.push(error(`${path}.print.fitToWidth`, "boolean", typeOf(print.fitToWidth), print.fitToWidth,
+            "true scales the sheet to one page wide when printed."));
+        }
+        if (print.footer != null) {
+          if (!isPlainObject(print.footer) && !Array.isArray(print.footer)) {
+            errors.push(error(`${path}.print.footer`, "object {left?, center?, right?}", typeOf(print.footer), print.footer,
+              "A footer has up to three slots of text."));
+          } else {
+            const footer = print.footer as Record<string, unknown>;
+            for (const slot of ["left", "center", "right"]) {
+              if (footer[slot] != null && typeof footer[slot] !== "string") {
+                errors.push(error(`${path}.print.footer.${slot}`, "string", typeOf(footer[slot]), footer[slot],
+                  "Footer text; {page} and {pages} print the page number and count."));
+              }
+            }
           }
         }
       }

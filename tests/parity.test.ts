@@ -123,6 +123,19 @@ const SCHEMAS: Record<string, unknown> = {
       { name: "Two", cells: { A1: { value: 2 }, A2: { value: "two" } } },
     ],
   },
+
+  /** Print setup + row heights, including a height on a row with no cells and a literal "&" in the footer. */
+  printSetup: {
+    meta: META,
+    sheets: [
+      {
+        name: "Print",
+        cells: { A1: { value: "Title" }, B2: { value: 42 } },
+        rowHeights: { "1": 32, "3": 20.5 },
+        print: { orientation: "landscape", fitToWidth: true, footer: { left: "Q3 & Q4", right: "Page {page} of {pages}" } },
+      },
+    ],
+  },
 };
 
 const HAS_PHP = phpAvailable();

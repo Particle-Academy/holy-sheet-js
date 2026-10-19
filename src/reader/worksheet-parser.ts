@@ -3,7 +3,7 @@ import type { CellComment } from "../workbook/cell-comment";
 import type { CellFormat } from "../workbook/cell-format";
 import type { CellPrimitive } from "../schema/types";
 import { MergedRegion } from "../workbook/merged-region";
-import { Sheet } from "../workbook/sheet";
+import { Sheet, type PrintSetup } from "../workbook/sheet";
 import { at, el, els, parseXml, type XmlNode } from "./xml";
 
 /** Parses one xl/worksheets/sheetN.xml → Sheet. Mirrors PHP `WorksheetParser`. */
@@ -23,9 +23,72 @@ export const WorksheetParser = {
     const columnWidths = parseColumnWidths(xml);
     const [frozenRows, frozenCols] = parseFrozen(xml);
 
-    return new Sheet(name, cells, merges, columnWidths, frozenRows, frozenCols);
+    return new Sheet(name, cells, merges, columnWidths, frozenRows, frozenCols, parseRowHeights(xml), parsePrint(xml));
   },
 };
+
+/** Rows with a CUSTOM height, in pixels (points / 0.75). Mirrors PHP WorksheetParser::parseRowHeights. */
+function parseRowHeights(xml: XmlNode): Map<number, number> {
+  const out = new Map<number, number>();
+  const sheetData = el(xml, "sheetData");
+  if (!sheetData) return out;
+  for (const row of els(sheetData, "row")) {
+    const r = parseInt(at(row, "r") ?? "0", 10);
+    const custom = at(row, "customHeight");
+    const ht = at(row, "ht");
+    if (r > 0 && ht !== undefined && (custom === "1" || custom === "true")) {
+      out.set(r, Math.round((parseFloat(ht) / 0.75) * 100) / 100);
+    }
+  }
+  return out;
+}
+
+/** Print setup. Mirrors PHP WorksheetParser::parsePrint. */
+function parsePrint(xml: XmlNode): PrintSetup | null {
+  const fitToPage = ["1", "true"].includes(at(el(el(xml, "sheetPr"), "pageSetUpPr"), "fitToPage") ?? "");
+  const setup = el(xml, "pageSetup");
+  const o = at(setup, "orientation");
+  const orientation = o === "portrait" || o === "landscape" ? o : null;
+  const fitToWidth =
+    fitToPage && setup !== undefined && at(setup, "fitToWidth") === "1" && ["0", ""].includes(at(setup, "fitToHeight") ?? "");
+  const oddFooter = el(el(xml, "headerFooter"), "oddFooter");
+  const footer = oddFooter !== undefined ? parseFooterCodes(oddFooter.text) : null;
+  if (orientation === null && !fitToWidth && footer === null) return null;
+  return { orientation, fitToWidth, footer };
+}
+
+/**
+ * Excel header/footer codes back to three slots. Mirrors PHP
+ * WorksheetParser::parseFooterCodes, code for code.
+ */
+export function parseFooterCodes(codes: string): PrintSetup["footer"] {
+  const slots: Record<"left" | "center" | "right", string> = { left: "", center: "", right: "" };
+  let current: "left" | "center" | "right" = "center";
+  const len = codes.length;
+  for (let i = 0; i < len; i++) {
+    const ch = codes[i]!;
+    if (ch !== "&" || i + 1 >= len) {
+      slots[current] += ch;
+      continue;
+    }
+    const next = codes[++i]!;
+    if (next === "&") slots[current] += "&";
+    else if (next === "L") current = "left";
+    else if (next === "C") current = "center";
+    else if (next === "R") current = "right";
+    else if (next === "P") slots[current] += "{page}";
+    else if (next === "N") slots[current] += "{pages}";
+    else if (next === '"') {
+      const close = codes.indexOf('"', i + 1);
+      i = close === -1 ? len : close;
+    } else if (/[0-9]/.test(next)) {
+      while (i + 1 < len && /[0-9]/.test(codes[i + 1]!)) i++;
+    } else if (next === "K") {
+      i = Math.min(len - 1, i + 6);
+    }
+  }
+  return slots.left === "" && slots.center === "" && slots.right === "" ? null : slots;
+}
 
 function parseCells(
   xml: XmlNode,

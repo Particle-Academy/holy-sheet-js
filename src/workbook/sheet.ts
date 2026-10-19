@@ -2,6 +2,13 @@ import type { Cell } from "./cell";
 import type { CellComment } from "./cell-comment";
 import type { MergedRegion } from "./merged-region";
 
+/** How a sheet prints. Mirrors the PHP `Sheet::$print` array. */
+export interface PrintSetup {
+  orientation: "portrait" | "landscape" | null;
+  fitToWidth: boolean;
+  footer: { left: string; center: string; right: string } | null;
+}
+
 /** A worksheet. Mirrors PHP `Workbook\Sheet`. Cells are an A1-keyed map. */
 export class Sheet {
   constructor(
@@ -11,6 +18,9 @@ export class Sheet {
     readonly columnWidths: Map<number, number> = new Map(),
     readonly frozenRows: number = 0,
     readonly frozenCols: number = 0,
+    /** 1-based row number → pixels. */
+    readonly rowHeights: Map<number, number> = new Map(),
+    readonly print: PrintSetup | null = null,
   ) {}
 
   /** rowNumber → (colLetter → Cell), sorted by ascending row number. */

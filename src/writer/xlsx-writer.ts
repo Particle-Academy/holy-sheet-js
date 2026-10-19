@@ -13,6 +13,27 @@ const encoder = new TextEncoder();
  * XLSX writer — emits a complete OOXML SpreadsheetML package as bytes.
  * Mirrors PHP `Writer\XlsxWriter` (file I/O moved to the Agent for isomorphism).
  */
+/**
+ * A footer as Excel's header/footer codes: &L / &C / &R open a section, &P is
+ * the page number, &N the count, and a literal "&" is "&&". Mirrors PHP
+ * XlsxWriter::footerCodes.
+ */
+export function footerCodes(footer: { left: string; center: string; right: string }): string {
+  let codes = "";
+  for (const [slot, code] of [["left", "&L"], ["center", "&C"], ["right", "&R"]] as const) {
+    if (footer[slot] !== "") {
+      codes += code + footer[slot].replace(/&/g, "&&").replace(/\{pages\}/g, "&N").replace(/\{page\}/g, "&P");
+    }
+  }
+  return codes;
+}
+
+/** A number as the shortest decimal, PHP number_format(x, 4) trimmed: 24 -> "24". */
+function decimal(value: number): string {
+  const out = value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+  return out === "" || out === "-0" ? "0" : out;
+}
+
 export class XlsxWriter {
   toBytes(workbook: Workbook): Uint8Array {
     const styles = new StylesRegistry();
@@ -159,14 +180,22 @@ export class XlsxWriter {
       colsXml += "</cols>";
     }
 
+    // Rows with cells and rows with only a height, in row order; heights in
+    // points (pixels x 0.75), as Excel stores them.
+    const rows = sheet.rows();
+    for (const rowIndex of sheet.rowHeights.keys()) {
+      if (!rows.has(rowIndex)) rows.set(rowIndex, new Map());
+    }
     let rowsXml = "";
-    for (const [rowIndex, row] of sheet.rows()) {
+    for (const [rowIndex, row] of [...rows.entries()].sort((a, b) => a[0] - b[0])) {
       let cellsXml = "";
       const sortedCols = [...row.keys()].sort();
       for (const col of sortedCols) {
         cellsXml += this.cellXml(row.get(col)!, styles);
       }
-      rowsXml += `<row r="${rowIndex}">${cellsXml}</row>`;
+      const height = sheet.rowHeights.get(rowIndex);
+      const ht = height !== undefined ? ` ht="${decimal(height * 0.75)}" customHeight="1"` : "";
+      rowsXml += cellsXml === "" ? `<row r="${rowIndex}"${ht}/>` : `<row r="${rowIndex}"${ht}>${cellsXml}</row>`;
     }
 
     let mergesXml = "";
@@ -178,13 +207,31 @@ export class XlsxWriter {
 
     const legacyDrawing = sheet.hasComments() ? '<legacyDrawing r:id="rId1"/>' : "";
 
+    // Print setup, in CT_Worksheet order (see the PHP engine).
+    const print = sheet.print;
+    const sheetPrXml = print?.fitToWidth ? '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' : "";
+    let pageSetupXml = "";
+    if (print !== null && (print.orientation !== null || print.fitToWidth)) {
+      pageSetupXml =
+        "<pageSetup" +
+        (print.orientation !== null ? ` orientation="${print.orientation}"` : "") +
+        (print.fitToWidth ? ' fitToWidth="1" fitToHeight="0"' : "") +
+        "/>";
+    }
+    const headerFooterXml = print?.footer
+      ? `<headerFooter><oddFooter>${this.escape(footerCodes(print.footer))}</oddFooter></headerFooter>`
+      : "";
+
     return (
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      sheetPrXml +
       sheetViewsXml +
       colsXml +
       `<sheetData>${rowsXml}</sheetData>` +
       mergesXml +
+      pageSetupXml +
+      headerFooterXml +
       legacyDrawing +
       "</worksheet>"
     );

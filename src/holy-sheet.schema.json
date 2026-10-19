@@ -153,6 +153,31 @@
           "type": "integer",
           "minimum": 0,
           "description": "How many columns stay visible while the sheet scrolls sideways. Set to 1 when the first column is the label for the row."
+        },
+        "rowHeights": {
+          "type": "object",
+          "description": "Row heights in pixels, keyed by 1-based row NUMBER as Excel shows it: {\"1\": 32, \"4\": 28}. A default row is 20; give a title row or a header row room (28-36) instead of packing text against its fill.",
+          "propertyNames": { "pattern": "^[1-9][0-9]*$" },
+          "additionalProperties": { "type": "number", "minimum": 0 }
+        },
+        "print": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "How the sheet prints. A sheet wider than a page splits its columns across pages unless fitToWidth is set.",
+          "properties": {
+            "orientation": { "type": "string", "enum": ["portrait", "landscape"] },
+            "fitToWidth": { "type": "boolean", "description": "Scale the sheet to one page wide (as many pages tall as it needs)." },
+            "footer": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "A printed footer: up to three slots. {page} and {pages} print the page number and count: {\"left\": \"Q3 Revenue Review\", \"right\": \"Page {page} of {pages}\"}.",
+              "properties": {
+                "left": { "type": "string" },
+                "center": { "type": "string" },
+                "right": { "type": "string" }
+              }
+            }
+          }
         }
       }
     },

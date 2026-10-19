@@ -41,6 +41,22 @@ function sheetToSchema(sheet: Sheet): Record<string, unknown> {
   }
   if (sheet.frozenRows > 0) out["frozenRows"] = sheet.frozenRows;
   if (sheet.frozenCols > 0) out["frozenCols"] = sheet.frozenCols;
+  if (sheet.rowHeights.size > 0) {
+    const heights: Record<number, number> = {};
+    for (const [k, v] of sheet.rowHeights) heights[k] = v;
+    out["rowHeights"] = heights;
+  }
+  if (sheet.print !== null) {
+    const print: Record<string, unknown> = {};
+    if (sheet.print.orientation !== null) print["orientation"] = sheet.print.orientation;
+    if (sheet.print.fitToWidth) print["fitToWidth"] = true;
+    if (sheet.print.footer !== null) {
+      const footer: Record<string, string> = {};
+      for (const k of ["left", "center", "right"] as const) if (sheet.print.footer[k] !== "") footer[k] = sheet.print.footer[k];
+      print["footer"] = footer;
+    }
+    out["print"] = print;
+  }
   return out;
 }
 

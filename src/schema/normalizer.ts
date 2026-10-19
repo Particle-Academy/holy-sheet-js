@@ -4,7 +4,7 @@ import { ColumnWidths } from "./column-widths";
 import { CellComment } from "../workbook/cell-comment";
 import { CellFormat } from "../workbook/cell-format";
 import { MergedRegion } from "../workbook/merged-region";
-import { Sheet } from "../workbook/sheet";
+import { Sheet, type PrintSetup } from "../workbook/sheet";
 import { Workbook } from "../workbook/workbook";
 import { DateConverter } from "../writer/format/date-converter";
 import { SchemaException } from "../exceptions";
@@ -131,6 +131,8 @@ export class Normalizer {
       this.normalizeWidths(sheet),
       toInt(sheet.frozenRows ?? 0),
       toInt(sheet.frozenCols ?? 0),
+      normalizeRowHeights(sheet.rowHeights),
+      normalizePrint(sheet.print),
     );
   }
 
@@ -452,4 +454,38 @@ function promoteFormula(value: Any): [Any, string | null] {
 function toInt(v: unknown): number {
   const n = Math.trunc(Number(v));
   return Number.isFinite(n) ? n : 0;
+}
+
+/** PHP `is_numeric`: a finite number or a numeric string. */
+function phpNumeric(v: unknown): number | null {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  return isNumericString(v) ? numericStringToNumber(v as string) : null;
+}
+
+/** `rowHeights`: 1-based row number → pixels, sorted. Mirrors PHP Normalizer::normalizeRowHeights. */
+export function normalizeRowHeights(map: unknown): Map<number, number> {
+  const out = new Map<number, number>();
+  if (!isPlainObject(map) && !Array.isArray(map)) return out;
+  for (const [row, px] of Object.entries(map as Record<string, unknown>)) {
+    const n = phpNumeric(px);
+    if (/^[1-9]\d{0,6}$/.test(row) && n !== null && n >= 0) out.set(parseInt(row, 10), n);
+  }
+  return new Map([...out.entries()].sort((a, b) => a[0] - b[0]));
+}
+
+/** `print`, normalised; null when it asks for nothing. Mirrors PHP Normalizer::normalizePrint. */
+export function normalizePrint(print: unknown): PrintSetup | null {
+  if (!isPlainObject(print) && !Array.isArray(print)) return null;
+  const p = print as Record<string, unknown>;
+  const orientation = p.orientation === "portrait" || p.orientation === "landscape" ? p.orientation : null;
+  const fitToWidth = p.fitToWidth === true;
+  let footer: PrintSetup["footer"] = null;
+  if (isPlainObject(p.footer) || Array.isArray(p.footer)) {
+    const f = p.footer as Record<string, unknown>;
+    const slot = (k: string): string => (typeof f[k] === "string" ? (f[k] as string) : "");
+    footer = { left: slot("left"), center: slot("center"), right: slot("right") };
+    if (footer.left === "" && footer.center === "" && footer.right === "") footer = null;
+  }
+  if (orientation === null && !fitToWidth && footer === null) return null;
+  return { orientation, fitToWidth, footer };
 }

@@ -86,6 +86,14 @@ export interface SheetSchema {
   columnWidths?: Record<number | string, number>;
   frozenRows?: number;
   frozenCols?: number;
+  /** 1-based row number → pixels. */
+  rowHeights?: Record<number | string, number>;
+  print?: {
+    orientation?: "portrait" | "landscape";
+    fitToWidth?: boolean;
+    /** `{page}` / `{pages}` print the page number and count. */
+    footer?: { left?: string; center?: string; right?: string };
+  };
 }
 
 export interface HolySheetSchema {

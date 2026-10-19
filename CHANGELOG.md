@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] — 2026-10-19
+
+### Added
+
+- **`print`** (`orientation`, `fitToWidth`, `footer` with `{page}` / `{pages}`)
+  and **`rowHeights`** (pixels by 1-based row number). Read back, validated and
+  published in the schema. **Nothing to do**: a workbook without them is
+  byte-identical. Same as `particle-academy/holy-sheet` 2.6.0 and
+  `fancy-holy-sheet` 0.6.0; parity holds (`printSetup` fixture).
+
 ## [2.6.0] — 2026-10-11
 
 ### Fixed
