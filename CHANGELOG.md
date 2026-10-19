@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0] — 2026-10-19
+
+### Added
+
+- **`print.fitToPage`: one page wide AND tall.** `fitToWidth` scales a sheet
+  to one page wide and lets it run as many pages tall as it needs, so the page
+  break fell through the chart below a board summary in three of four
+  agent-built workbooks reviewed. `fitToPage: true` scales the whole sheet,
+  table, notes and chart, onto one sheet of paper.
+- **`charts[].series[].points`: colour single points.** `[{"index": 2,
+  "color": "#C2410C"}]` colours the one bar, slice or line marker the chart is
+  about (index 0-based within `values`). Reviewers marked down every comparison
+  chart whose bars were all one colour, because it did not say which bar
+  mattered. Written as DrawingML data points, read back by `describe()` /
+  `read()`, validated with a hint per point, and published in the schema.
+- **Nothing to do**: a workbook that uses neither is byte-identical to before.
+
 ## [2.8.0] — 2026-10-19
 
 ### Added

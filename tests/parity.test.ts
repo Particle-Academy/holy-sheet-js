@@ -153,18 +153,24 @@ const SCHEMAS: Record<string, unknown> = {
             type: "column",
             title: "Q3 revenue & growth",
             categories: "A5:A7",
-            series: [{ name: "Revenue", values: "B5:B7", color: "#1F3A5F" }],
+            series: [{ name: "Revenue", values: "B5:B7", color: "#1F3A5F", points: [{ index: 2, color: "#C2410C" }] }],
             position: { from: "E2", to: "L18" },
             dataLabels: true,
             format: "$#,##0",
           },
           { type: "bar", categories: "A5:A7", series: [{ name: "Growth", values: "C5:C7" }], dataLabels: true, format: "0.0%" },
-          { type: "line", categories: "A5:A7", series: [{ values: "B5:B8" }, { name: "Growth", values: "C5:C7", color: "#F97316" }] },
-          { type: "pie", categories: "A5:A7", series: [{ values: "B5:B7" }], legend: false },
+          { type: "line", categories: "A5:A7", series: [{ values: "B5:B8", points: [{ index: 3, color: "#111827" }] }, { name: "Growth", values: "C5:C7", color: "#F97316" }] },
+          { type: "pie", categories: "A5:A7", series: [{ values: "B5:B7", points: [{ index: 0, color: "#0F766E" }] }], legend: false },
         ],
       },
       { name: "Summary", cells: { A1: { value: "See chart" } }, charts: [{ type: "column", categories: "'Q3 Revenue'!A5:A7", series: [{ values: "'Q3 Revenue'!B5:B7" }] }] },
     ],
+  },
+
+  /** One page wide and tall. */
+  printFitToPage: {
+    meta: META,
+    sheets: [{ name: "Fit", cells: { A1: { value: "Title" } }, print: { orientation: "portrait", fitToPage: true } }],
   },
 
   /** Print setup + row heights, including a height on a row with no cells and a literal "&" in the footer. */

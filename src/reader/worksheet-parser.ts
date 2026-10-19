@@ -51,10 +51,12 @@ function parsePrint(xml: XmlNode): PrintSetup | null {
   const orientation = o === "portrait" || o === "landscape" ? o : null;
   const fitToWidth =
     fitToPage && setup !== undefined && at(setup, "fitToWidth") === "1" && ["0", ""].includes(at(setup, "fitToHeight") ?? "");
+  const fitToPageOnly =
+    fitToPage && setup !== undefined && at(setup, "fitToWidth") === "1" && at(setup, "fitToHeight") === "1";
   const oddFooter = el(el(xml, "headerFooter"), "oddFooter");
   const footer = oddFooter !== undefined ? parseFooterCodes(oddFooter.text) : null;
-  if (orientation === null && !fitToWidth && footer === null) return null;
-  return { orientation, fitToWidth, footer };
+  if (orientation === null && !fitToWidth && !fitToPageOnly && footer === null) return null;
+  return { orientation, fitToWidth, fitToPage: fitToPageOnly, footer };
 }
 
 /**

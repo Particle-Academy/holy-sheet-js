@@ -283,6 +283,10 @@ export class Validator {
           errors.push(error(`${path}.print.fitToWidth`, "boolean", typeOf(print.fitToWidth), print.fitToWidth,
             "true scales the sheet to one page wide when printed."));
         }
+        if (print.fitToPage != null && typeof print.fitToPage !== "boolean") {
+          errors.push(error(`${path}.print.fitToPage`, "boolean", typeOf(print.fitToPage), print.fitToPage,
+            "true scales the sheet onto ONE page, wide and tall: a one-page summary with a chart prints whole."));
+        }
         if (print.footer != null) {
           if (!isPlainObject(print.footer) && !Array.isArray(print.footer)) {
             errors.push(error(`${path}.print.footer`, "object {left?, center?, right?}", typeOf(print.footer), print.footer,
@@ -356,6 +360,31 @@ export class Validator {
   }
 }
 
+/** Mirrors PHP Validator::validatePoints. */
+function validatePoints(points: unknown, at: string, values: ChartRange | null): ValidationError[] {
+  if (!Array.isArray(points)) {
+    return [
+      error(at, "a list of points", typeOf(points), points,
+        'Colour single points: [{"index": 2, "color": "#C2410C"}], index 0-based within values.'),
+    ];
+  }
+  const count = values === null ? 0 : values.addresses().length;
+  const errors: ValidationError[] = [];
+  points.forEach((p: unknown, k: number) => {
+    const rec = isPlainObject(p) || Array.isArray(p) ? (p as Record<string, unknown>) : null;
+    const index = rec ? (rec.index ?? null) : null;
+    const color = rec ? (rec.color ?? null) : null;
+    if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= count) {
+      errors.push(error(`${at}[${k}].index`, "an index within values (0 to " + Math.max(0, count - 1) + ")", typeOf(index), index,
+        'The 0-based position of the point in its values range: "B5:B7" has points 0, 1 and 2.'));
+    }
+    if (typeof color !== "string" || !/^#[0-9A-Fa-f]{6}$/.test(color)) {
+      errors.push(error(`${at}[${k}].color`, "#RRGGBB", typeOf(color), color, 'A hex colour, like "#C2410C".'));
+    }
+  });
+  return errors;
+}
+
 /** Mirrors PHP Validator::validateCharts, path, expectation and hint for each. */
 function validateCharts(charts: unknown, path: string, sheetName: string): ValidationError[] {
   if (!Array.isArray(charts)) {
@@ -392,6 +421,9 @@ function validateCharts(charts: unknown, path: string, sheetName: string): Valid
           if (color != null && (typeof color !== "string" || !/^#[0-9A-Fa-f]{6}$/.test(color))) {
             errors.push(error(`${at}.series[${j}].color`, "#RRGGBB", typeOf(color), color, 'A hex colour, like "#1F3A5F".'));
           }
+        }
+        if (isObj && (s as Record<string, unknown>).points != null) {
+          errors.push(...validatePoints((s as Record<string, unknown>).points, `${at}.series[${j}].points`, ChartRange.parse(values, sheetName)));
         }
       });
     }

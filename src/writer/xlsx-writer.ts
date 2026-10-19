@@ -251,13 +251,15 @@ export class XlsxWriter {
 
     // Print setup, in CT_Worksheet order (see the PHP engine).
     const print = sheet.print;
-    const sheetPrXml = print?.fitToWidth ? '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' : "";
+    const fits = (print?.fitToWidth ?? false) || (print?.fitToPage ?? false);
+    const sheetPrXml = fits ? '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' : "";
     let pageSetupXml = "";
-    if (print !== null && (print.orientation !== null || print.fitToWidth)) {
+    if (print !== null && (print.orientation !== null || fits)) {
       pageSetupXml =
         "<pageSetup" +
         (print.orientation !== null ? ` orientation="${print.orientation}"` : "") +
-        (print.fitToWidth ? ' fitToWidth="1" fitToHeight="0"' : "") +
+        // fitToPage: one page wide AND tall. fitToWidth: one wide, as tall as it needs.
+        (print.fitToPage ? ' fitToWidth="1" fitToHeight="1"' : print.fitToWidth ? ' fitToWidth="1" fitToHeight="0"' : "") +
         "/>";
     }
     const headerFooterXml = print?.footer

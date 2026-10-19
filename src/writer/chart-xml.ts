@@ -120,7 +120,21 @@ function seriesXml(i: number, s: NormalizedChart["series"][number], chart: Norma
   const mark = type === "line" ? '<c:marker><c:symbol val="circle"/><c:size val="6"/></c:marker>' : "";
   const cat = chart.categories !== null ? "<c:cat>" + strRef(chart.categories, workbook) + "</c:cat>" : "";
   const smooth = type === "line" ? '<c:smooth val="0"/>' : "";
-  return `<c:ser><c:idx val="${i}"/><c:order val="${i}"/>` + name + fill + invert + mark + cat + "<c:val>" + numRef(s.values, workbook) + "</c:val>" + smooth + "</c:ser>";
+  // A coloured point (dPt) follows the series' own fill, invert and marker,
+  // and precedes its categories. Mirrors PHP ChartXml::series.
+  let points = "";
+  for (const p of s.points) {
+    const solid = `<a:solidFill><a:srgbClr val="${p.color}"/></a:solidFill>`;
+    points +=
+      `<c:dPt><c:idx val="${p.index}"/>` +
+      (type === "line"
+        ? `<c:marker><c:symbol val="circle"/><c:size val="6"/><c:spPr>${solid}<a:ln>${solid}</a:ln></c:spPr></c:marker><c:bubble3D val="0"/>`
+        : type === "pie"
+          ? `<c:bubble3D val="0"/><c:spPr>${solid}</c:spPr>`
+          : `<c:invertIfNegative val="0"/><c:bubble3D val="0"/><c:spPr>${solid}</c:spPr>`) +
+      "</c:dPt>";
+  }
+  return `<c:ser><c:idx val="${i}"/><c:order val="${i}"/>` + name + fill + invert + mark + points + cat + "<c:val>" + numRef(s.values, workbook) + "</c:val>" + smooth + "</c:ser>";
 }
 
 function strRef(range: ChartRange, workbook: Workbook): string {

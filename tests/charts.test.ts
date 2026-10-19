@@ -162,3 +162,32 @@ describe("charts", () => {
     expect(JSON.stringify(sheet.charts)).toContain("categories");
   });
 });
+
+describe("chart points", () => {
+  it("colours single points, to make the finding stand out", () => {
+    const chart = {
+      type: "bar",
+      categories: "A5:A7",
+      series: [{ name: "Revenue", values: "B5:B7", color: "#94A3B8", points: [{ index: 2, color: "#C2410C" }] }],
+      position: { from: "E2", to: "L18" },
+    };
+    const xml = chParts(chWorkbook([chart]))["xl/charts/chart1.xml"]!;
+    expect(xml).toContain(
+      '<c:dPt><c:idx val="2"/><c:invertIfNegative val="0"/><c:bubble3D val="0"/><c:spPr><a:solidFill><a:srgbClr val="C2410C"/></a:solidFill></c:spPr></c:dPt>',
+    );
+    expect(xml.indexOf("<c:dPt>")).toBeGreaterThan(xml.indexOf('val="94A3B8"'));
+    expect(xml.indexOf("<c:dPt>")).toBeLessThan(xml.indexOf("<c:cat>"));
+
+    const pie = chParts(chWorkbook([{ ...chart, type: "pie" }]))["xl/charts/chart1.xml"]!;
+    expect(pie).toContain('<c:dPt><c:idx val="2"/><c:bubble3D val="0"/><c:spPr><a:solidFill><a:srgbClr val="C2410C"/></a:solidFill></c:spPr></c:dPt>');
+
+    const read = Agent.read(Agent.toBytes(chWorkbook([chart]))) as any;
+    expect(read.sheets[0].charts[0].series[0].points).toStrictEqual([{ index: 2, color: "#C2410C" }]);
+
+    const paths = Agent.validate(
+      chWorkbook([{ ...chart, series: [{ values: "B5:B7", points: [{ index: 3, color: "#C2410C" }, { index: 0, color: "red" }] }] }]),
+    ).map((e) => e.path);
+    expect(paths).toContain("sheets[0].charts[0].series[0].points[0].index");
+    expect(paths).toContain("sheets[0].charts[0].series[0].points[1].color");
+  });
+});

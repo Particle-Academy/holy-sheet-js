@@ -7,6 +7,8 @@ import type { ChartRange } from "./chart-range";
 export interface PrintSetup {
   orientation: "portrait" | "landscape" | null;
   fitToWidth: boolean;
+  /** One page wide AND tall. */
+  fitToPage: boolean;
   footer: { left: string; center: string; right: string } | null;
 }
 
@@ -15,7 +17,7 @@ export interface NormalizedChart {
   type: "column" | "bar" | "line" | "pie";
   title: string | null;
   categories: ChartRange | null;
-  series: { name: string | null; values: ChartRange; color: string | null }[];
+  series: { name: string | null; values: ChartRange; color: string | null; points: { index: number; color: string }[] }[];
   /** [col, row], both 0-based. */
   from: [number, number];
   to: [number, number];

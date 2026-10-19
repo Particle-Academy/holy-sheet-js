@@ -56,3 +56,17 @@ describe("print setup and row heights", () => {
     );
   });
 });
+
+describe("fit to one page", () => {
+  it("fits a short sheet onto one page, so a chart below the table is never cut", () => {
+    const xml = sheetXml(schema({ print: { orientation: "portrait", fitToPage: true } }));
+    expect(xml).toContain('<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>');
+    expect(xml).toContain('<pageSetup orientation="portrait" fitToWidth="1" fitToHeight="1"/>');
+
+    const read = Agent.read(Agent.toBytes(schema({ print: { fitToPage: true, footer: { right: "Page {page} of {pages}" } } }) as never)) as Any;
+    expect(JSON.stringify((read.sheets as Any[])[0]!.print)).toBe(JSON.stringify({ fitToPage: true, footer: { right: "Page {page} of {pages}" } }));
+
+    expect(Agent.validate(schema({ print: { fitToPage: 1 } }) as never).map((e) => e.path)).toStrictEqual(["sheets[0].print.fitToPage"]);
+    expect(JSON.stringify((Agent.toolDefinition() as Any as { definitions: { Sheet: { properties: Any } } }).definitions.Sheet.properties.print)).toContain("fitToPage");
+  });
+});

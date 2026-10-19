@@ -458,6 +458,22 @@ function toInt(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** A series' coloured points, by index. Mirrors PHP Normalizer::normalizePoints. */
+export function normalizePoints(points: unknown, count: number): { index: number; color: string }[] {
+  if (!isPlainObject(points) && !Array.isArray(points)) return [];
+  const byIndex = new Map<number, string>();
+  for (const p of Object.values(points as Record<string, unknown>)) {
+    const rec = isPlainObject(p) || Array.isArray(p) ? (p as Record<string, unknown>) : null;
+    const index = rec ? rec.index : undefined;
+    const color = rec ? rec.color : undefined;
+    const m = typeof color === "string" ? /^#([0-9A-Fa-f]{6})$/.exec(color) : null;
+    if (typeof index === "number" && Number.isInteger(index) && index >= 0 && index < count && m) {
+      byIndex.set(index, m[1]!.toUpperCase());
+    }
+  }
+  return [...byIndex.entries()].sort((a, b) => a[0] - b[0]).map(([index, color]) => ({ index, color }));
+}
+
 /** The chart types the writer draws. Mirrors PHP Normalizer::CHART_TYPES. */
 export const CHART_TYPES = ["column", "bar", "line", "pie"] as const;
 
@@ -480,7 +496,12 @@ export function normalizeCharts(charts: unknown, sheetName: string, cells: Map<s
       if (values === null) continue;
       const rec = s as Record<string, unknown>;
       const m = typeof rec.color === "string" ? /^#([0-9A-Fa-f]{6})$/.exec(rec.color) : null;
-      series.push({ name: typeof rec.name === "string" ? rec.name : null, values, color: m ? m[1]!.toUpperCase() : null });
+      series.push({
+        name: typeof rec.name === "string" ? rec.name : null,
+        values,
+        color: m ? m[1]!.toUpperCase() : null,
+        points: normalizePoints(rec.points, values.addresses().length),
+      });
     }
     if (series.length === 0) continue;
 
@@ -535,6 +556,7 @@ export function normalizePrint(print: unknown): PrintSetup | null {
   const p = print as Record<string, unknown>;
   const orientation = p.orientation === "portrait" || p.orientation === "landscape" ? p.orientation : null;
   const fitToWidth = p.fitToWidth === true;
+  const fitToPage = p.fitToPage === true;
   let footer: PrintSetup["footer"] = null;
   if (isPlainObject(p.footer) || Array.isArray(p.footer)) {
     const f = p.footer as Record<string, unknown>;
@@ -542,6 +564,6 @@ export function normalizePrint(print: unknown): PrintSetup | null {
     footer = { left: slot("left"), center: slot("center"), right: slot("right") };
     if (footer.left === "" && footer.center === "" && footer.right === "") footer = null;
   }
-  if (orientation === null && !fitToWidth && footer === null) return null;
-  return { orientation, fitToWidth, footer };
+  if (orientation === null && !fitToWidth && !fitToPage && footer === null) return null;
+  return { orientation, fitToWidth, fitToPage, footer };
 }

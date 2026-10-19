@@ -71,7 +71,7 @@ export const ChartParser = {
         const catRef = formula(ser, "cat");
         categories = catRef !== null ? ChartRange.parse(catRef, sheetName) : null;
       }
-      series.push({ name: seriesName(ser), values, color: seriesColor(ser) });
+      series.push({ name: seriesName(ser), values, color: seriesColor(ser), points: points(ser) });
     }
     if (series.length === 0) return null;
 
@@ -132,6 +132,20 @@ function seriesName(ser: XmlNode): string | null {
   if (v) return v.text;
   const cached = descendants(tx, "v")[0];
   return cached ? cached.text : null;
+}
+
+/** Coloured points (c:dPt), by index. Mirrors PHP ChartParser::points. */
+function points(ser: XmlNode): { index: number; color: string }[] {
+  const byIndex = new Map<number, string>();
+  for (const dPt of els(ser, "dPt")) {
+    const idx = at(el(dPt, "idx"), "val");
+    const clr = descendants(dPt, "srgbClr")[0];
+    const color = (clr ? (at(clr, "val") ?? "") : "").toUpperCase();
+    if (idx !== undefined && /^[0-9]+$/.test(idx) && /^[0-9A-F]{6}$/.test(color)) {
+      byIndex.set(parseInt(idx, 10), color);
+    }
+  }
+  return [...byIndex.entries()].sort((a, b) => a[0] - b[0]).map(([index, color]) => ({ index, color }));
 }
 
 function seriesColor(ser: XmlNode): string | null {

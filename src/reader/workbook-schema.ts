@@ -51,6 +51,7 @@ function sheetToSchema(sheet: Sheet): Record<string, unknown> {
     const print: Record<string, unknown> = {};
     if (sheet.print.orientation !== null) print["orientation"] = sheet.print.orientation;
     if (sheet.print.fitToWidth) print["fitToWidth"] = true;
+    if (sheet.print.fitToPage) print["fitToPage"] = true;
     if (sheet.print.footer !== null) {
       const footer: Record<string, string> = {};
       for (const k of ["left", "center", "right"] as const) if (sheet.print.footer[k] !== "") footer[k] = sheet.print.footer[k];
@@ -74,6 +75,7 @@ function chartToSchema(chart: NormalizedChart, sheetName: string): Record<string
     if (s.name !== null) series["name"] = s.name;
     series["values"] = s.values.toSchema(sheetName);
     if (s.color !== null) series["color"] = "#" + s.color;
+    if (s.points.length > 0) series["points"] = s.points.map((p) => ({ index: p.index, color: "#" + p.color }));
     return series;
   });
   out["position"] = {

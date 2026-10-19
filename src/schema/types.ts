@@ -91,6 +91,8 @@ export interface SheetSchema {
   print?: {
     orientation?: "portrait" | "landscape";
     fitToWidth?: boolean;
+    /** One page wide AND tall: a one-page summary with a chart prints whole. */
+    fitToPage?: boolean;
     /** `{page}` / `{pages}` print the page number and count. */
     footer?: { left?: string; center?: string; right?: string };
   };
@@ -103,7 +105,8 @@ export interface ChartSchema {
   title?: string;
   /** Axis labels, e.g. "A5:A7" or "'Other sheet'!A5:A7". */
   categories?: string;
-  series: { name?: string; values: string; color?: string }[];
+  /** points colours single points (0-based within values) to make the finding stand out. */
+  series: { name?: string; values: string; color?: string; points?: { index: number; color: string }[] }[];
   /** Top-left and bottom-right cells; defaults to beside the data. */
   position?: { from: string; to: string };
   dataLabels?: boolean;
