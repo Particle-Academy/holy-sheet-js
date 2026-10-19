@@ -73,7 +73,9 @@ export const ChartXml = {
         labels +
         '<c:gapWidth val="80"/><c:axId val="10"/><c:axId val="20"/></c:barChart>';
     }
-    const axesXml = type === "pie" ? "" : axes(type === "bar", chart.format);
+    // A bar starts at zero. Mirrors PHP ChartXml::chart.
+    const zeroBase = type !== "line" && nonNegative(chart, workbook);
+    const axesXml = type === "pie" ? "" : axes(type === "bar", chart.format, zeroBase);
     const legend = chart.legend ?? (chart.series.length > 1 || type === "pie");
     const title =
       chart.title !== null
@@ -189,7 +191,12 @@ function dataLabels(type: string, format: string | null): string {
   );
 }
 
-function axes(horizontal: boolean, format: string | null): string {
+/** Every plotted (numeric) value is zero or more. Mirrors PHP ChartXml::nonNegative. */
+function nonNegative(chart: NormalizedChart, workbook: Workbook): boolean {
+  return chart.series.every((s) => values(s.values, workbook).every((v) => typeof v !== "number" || !(v < 0)));
+}
+
+function axes(horizontal: boolean, format: string | null, zeroBase = false): string {
   const catPos = horizontal ? "l" : "b";
   const valPos = horizontal ? "b" : "l";
   const numFmt = format !== null ? `<c:numFmt formatCode="${attr(format)}" sourceLinked="0"/>` : '<c:numFmt formatCode="General" sourceLinked="1"/>';
@@ -199,7 +206,7 @@ function axes(horizontal: boolean, format: string | null): string {
     '<c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="low"/>' +
     '<c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="BFBFBF"/></a:solidFill></a:ln></c:spPr>' +
     '<c:crossAx val="20"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>' +
-    '<c:valAx><c:axId val="20"/><c:scaling><c:orientation val="minMax"/></c:scaling>' +
+    '<c:valAx><c:axId val="20"/><c:scaling><c:orientation val="minMax"/>' + (zeroBase ? '<c:min val="0"/>' : "") + "</c:scaling>" +
     `<c:delete val="0"/><c:axPos val="${valPos}"/>` +
     '<c:majorGridlines><c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="E5E7EB"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>' +
     numFmt +

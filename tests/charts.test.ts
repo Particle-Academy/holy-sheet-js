@@ -191,3 +191,13 @@ describe("chart points", () => {
     expect(paths).toContain("sheets[0].charts[0].series[0].points[1].color");
   });
 });
+
+describe("zero-based bars", () => {
+  it("starts a bar axis at zero, unless a value is negative or it is a line", () => {
+    const high = chWorkbook([{ ...CH_REVENUE, series: [{ values: "B5:B7" }] }]);
+    Object.assign(high.sheets[0].cells, { B5: 96.1, B6: 93.8, B7: 90.7 });
+    expect(chParts(high)["xl/charts/chart1.xml"]).toContain('<c:scaling><c:orientation val="minMax"/><c:min val="0"/></c:scaling>');
+    expect(chParts(chWorkbook([{ ...CH_REVENUE, series: [{ values: "C5:C7" }] }]))["xl/charts/chart1.xml"]).not.toContain('<c:min val="0"/>');
+    expect(chParts(chWorkbook([{ ...CH_REVENUE, type: "line" }]))["xl/charts/chart1.xml"]).not.toContain('<c:min val="0"/>');
+  });
+});

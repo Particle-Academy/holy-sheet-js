@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.10.1] — 2026-10-19
+
+### Fixed
+
+- **A bar or column chart's value axis starts at zero** when every plotted value
+  is zero or more. Left to the renderer, an axis over values like 90-97 started
+  near 88, so a three-point gap read as a collapse; reviewers gated an
+  agent-built deck for exactly that. A chart with a negative value, and a line
+  chart, keep the renderer's own scaling. **What to do: nothing**; bar charts
+  you already write now carry `<c:min val="0"/>` on the value axis.
+
 ## [2.10.0] — 2026-10-19
 
 ### Added
