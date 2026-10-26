@@ -1,4 +1,4 @@
-import { UnsupportedFormatException } from "../exceptions";
+import { ArchiveRefused, UnsupportedFormatException } from "../exceptions";
 import { unzipSync } from "../zip";
 import { phpTrim } from "./ods/ns";
 
@@ -29,6 +29,7 @@ export const FormatSniffer = {
     try {
       files = unzipSync(bytes);
     } catch (e) {
+      if (e instanceof ArchiveRefused && (e.reason !== "archive_corrupt" || (bytes[0] === 80 && bytes[1] === 75))) throw e;
       // A real zip this reader cannot inflate is a different failure; say so.
       if (e instanceof Error && e.message.includes("unsupported zip method")) throw e;
       throw UnsupportedFormatException.notAZip(path);

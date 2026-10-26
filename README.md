@@ -37,6 +37,13 @@ await Agent.write(schema, "sales.xlsx");
 
 ## API
 
+Spreadsheet reads and `unzipSync` validate ZIP structure, CRC, unique safe names
+and expansion before XML parsing. Unsafe ZIPs throw exported `ArchiveRefused`
+with a bounded `reason`; ordinary non-spreadsheet formats retain
+`UnsupportedFormatException`. Defaults are 64 MiB archive/part, 256 MiB expanded,
+16,384 entries and 1000:1 ratio. `unzipSync(bytes, limits)` accepts lower host
+ceilings via `ArchiveLimits`. This input layer does not add lossless editing.
+
 `Agent` (static) mirrors the PHP surface:
 
 - `validate(schema)` → structured errors `{path, expected, got, value, hint}[]`

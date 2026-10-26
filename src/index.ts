@@ -1,6 +1,7 @@
 export { Agent, VERSION } from "./agent";
 export { HolySheet } from "./holy-sheet";
-export { SchemaException, UnsupportedFormatException } from "./exceptions";
+export { ArchiveRefused, SchemaException, UnsupportedFormatException } from "./exceptions";
+export type { ArchiveLimits } from "./zip/source-archive";
 export * from "./schema/types";
 export type * from "./ops/types";
 

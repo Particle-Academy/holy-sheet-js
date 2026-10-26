@@ -13,6 +13,7 @@ import type {
   WriteResult,
 } from "./schema/types";
 import { FormatSniffer } from "./reader/format-sniffer";
+import { readFileBounded } from "./reader/file-input";
 import { OdsReader } from "./reader/ods-reader";
 import { WorkbookSchema } from "./reader/workbook-schema";
 import { XlsxReader } from "./reader/xlsx-reader";
@@ -84,8 +85,8 @@ export const Agent = {
   async describe(path: string): Promise<Record<string, unknown>> {
     const fs = await import("node:fs");
     if (!fs.existsSync(path)) return { error: "not_found", path };
-    const bytes = fs.readFileSync(path);
-    return readSpreadsheet(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength), path);
+    const bytes = await readFileBounded(path);
+    return readSpreadsheet(bytes, path);
   },
 
   /** Validate + conservative repairs in one call. */

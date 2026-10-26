@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Route XLSX/ODS and public `unzipSync` reads through bounded ZIP validation:
+  coherent local/central records, safe unique member names, CRC and exact sizes,
+  archive/part/total/ratio limits and bounded DEFLATE output. Reject truncated or
+  invalid codes and back-references with typed `ArchiveRefused`; Node file input
+  is bounded before allocation. Defaults: 64 MiB archive/part, 256 MiB expanded,
+  16,384 entries and 1000:1 ratio. `unzipSync(bytes, limits)` supports lower host
+  ceilings. Existing valid payload bytes and spreadsheet projections are retained.
+
 - Update Vitest to 4.1.12 for security fixes; dev toolchain only, nothing to do.
 
 - **Dev toolchain only — no runtime change, nothing for consumers to do.** The

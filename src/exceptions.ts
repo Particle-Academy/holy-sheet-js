@@ -1,5 +1,14 @@
 import type { ValidationError } from "./schema/types";
 
+/** Bounded archive/security refusal; contains no document names or content. */
+export class ArchiveRefused extends Error {
+  constructor(public readonly reason: string) {
+    super(`Source archive refused: ${reason}`);
+    this.name = "ArchiveRefused";
+    Object.setPrototypeOf(this, ArchiveRefused.prototype);
+  }
+}
+
 /** Thrown when a Holy Sheet schema fails validation. Mirrors PHP `SchemaException`. */
 export class SchemaException extends Error {
   readonly errors: ValidationError[];
