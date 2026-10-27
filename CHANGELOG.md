@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-10-27
+
 ### Added
 
 - **Excel `.xltx` templates read, and `.ots` templates marked.** `read()` /
