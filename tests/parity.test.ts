@@ -76,6 +76,9 @@ const SCHEMAS: Record<string, unknown> = {
           [{ value: "+1" }, { value: "007" }, { value: "1e5", format: { bold: true } }],
           ["+1", "007", "1e5"],
         ],
+      },
+      {
+        name: "Sparse",
         cells: {
           E1: { value: "-0" },
           E2: { value: "1.50" },
