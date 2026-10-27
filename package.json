@@ -24,6 +24,9 @@
             }
         }
     },
+    "bin": {
+        "holy-sheet": "./dist/cli.js"
+    },
     "files": [
         "dist",
         "agent-guide",

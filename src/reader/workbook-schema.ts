@@ -19,6 +19,8 @@ export const WorkbookSchema = {
   fromWorkbook(workbook: Workbook): Record<string, unknown> {
     const schema: Record<string, unknown> = { sheets: workbook.sheets.map(sheetToSchema) };
     if (Object.keys(workbook.meta).length > 0) schema["meta"] = workbook.meta;
+    // Only templates say so; a document read is unchanged.
+    if (workbook.sourceKind === "template") schema["sourceKind"] = "template";
     return schema;
   },
 };

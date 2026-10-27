@@ -35,6 +35,10 @@ export class HolySheet {
   describe(path: string): Promise<Record<string, unknown>> {
     return Agent.describe(path);
   }
+  /** {@link Agent.convertTemplate}: .xltx/.ots to .xlsx/.ods and back. */
+  convertTemplate(input: Uint8Array | ArrayBuffer, to: "document" | "template" | null = null): Uint8Array {
+    return Agent.convertTemplate(input, to);
+  }
   validateAndRepair(schema: Any): RepairResult {
     return Agent.validateAndRepair(schema);
   }

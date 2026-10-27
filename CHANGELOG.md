@@ -10,6 +10,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Excel `.xltx` templates read, and `.ots` templates marked.** `read()` /
+  `describe()` read an `.xltx` exactly as its `.xlsx` twin and add
+  `sourceKind: "template"`; an `.ots` (already read, unmarked) now says so too.
+  `Workbook` gains a trailing optional `sourceKind` (default `"document"`).
+  Document reads are unchanged and carry no `sourceKind` key, so nothing to do
+  unless you want to tell the two apart. Mirrors PHP holy-sheet.
+- **`Agent.convertTemplate(bytes, to?)`** (also on `HolySheet`) and the new
+  `holy-sheet` bin, `npx holy-sheet template:convert <in> <out>
+  [--to=document|template] [--force]`, turn a template into its workbook twin
+  and back. Only the declaration is rewritten: the workbook part's content-type
+  value (OOXML), or the `mimetype` entry plus the manifest root's `media-type`
+  (ODF 1.3 Part 2 section 3.3 requires them to agree). Every other zip member is
+  copied as its original record, byte for byte; `mimetype` stays first and
+  stored. The bin is Node-only and never imported by the isomorphic index.
+- `OfficeTemplateRefused` with a constant `reason`.
+
+### Changed
+
+- **A macro-enabled template (`.xltm`) is now refused** with
+  `OfficeTemplateRefused("macro_enabled")`; it used to be read as a workbook with
+  its VBA silently ignored. So is an `.xltx` carrying a `vbaProject.bin`. An
+  `.xlsm` still reads as before but is never converted.
+- A package that declares a template of another family is refused with
+  `family_mismatch` instead of being read as whatever its parts looked like.
+
 ## [2.10.2] - 2026-10-26
 
 ### Security

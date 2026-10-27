@@ -76,6 +76,33 @@ when there is one). What maps and what does not is listed in the PHP package's
 [`docs/ReadPath.md`](https://github.com/Particle-Academy/holy-sheet/blob/main/docs/ReadPath.md#opendocument-spreadsheets-ods);
 this port reads the same fixtures and is diffed against it.
 
+### Excel and LibreOffice templates (.xltx, .ots)
+
+An `.xltx` is an `.xlsx` whose workbook part is declared a template; an `.ots`
+is an `.ods` whose `mimetype` (and manifest root entry) says
+`spreadsheet-template`. `read()` / `describe()` read both exactly as their twins
+and add `sourceKind: "template"` (also `Workbook#sourceKind` from
+`readWorkbook()`). A document read has no `sourceKind` key, as before.
+
+```ts
+Agent.read(xltxBytes);                 // { ..., sourceKind: "template" }
+Agent.convertTemplate(xltxBytes);      // .xlsx bytes ("document" | "template" | null = flip)
+```
+
+```
+npx holy-sheet template:convert budget.xltx budget.xlsx
+npx holy-sheet template:convert budget.ods budget.ots --to=template
+```
+
+Conversion rewrites only the declaration: the content-type value in
+`[Content_Types].xml`, or the ODF `mimetype` entry plus the manifest's root
+`media-type` (ODF 1.3 requires the two to match). Every other member is copied
+as its original zip record, byte for byte; `mimetype` stays first and stored.
+Refused with `OfficeTemplateRefused` (a constant `reason`): macro-enabled `.xltm`
+(`macro_enabled`; an `.xlsm` is never converted either) and a package declaring
+a template of another family (`family_mismatch`). The archive guards apply
+first. Mirrors PHP `Agent::convertTemplate()`.
+
 ### Versions as diffs
 
 `Agent.diff(a, b)` returns the ops that turn one schema into another, and

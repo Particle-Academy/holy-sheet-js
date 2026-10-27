@@ -1,6 +1,7 @@
 export { Agent, VERSION } from "./agent";
 export { HolySheet } from "./holy-sheet";
-export { ArchiveRefused, SchemaException, UnsupportedFormatException } from "./exceptions";
+export { ArchiveRefused, OfficeTemplateRefused, SchemaException, UnsupportedFormatException } from "./exceptions";
+export type { SourceKind } from "./zip/office-template";
 export type { ArchiveLimits } from "./zip/source-archive";
 export * from "./schema/types";
 export type * from "./ops/types";

@@ -1,4 +1,5 @@
 import { unzipSync } from "../zip";
+import { filesView, sourceKind } from "../zip/office-template";
 import { Cell } from "../workbook/cell";
 import { CellAddress } from "../workbook/cell-address";
 import { CellComment } from "../workbook/cell-comment";
@@ -58,6 +59,7 @@ export class OdsReader {
 
   /** Read an already-unzipped package (name -> bytes). */
   readFiles(files: Record<string, Uint8Array>): Workbook {
+    const kind = sourceKind(filesView(files));
     const getText = (name: string): string | null => (files[name] ? decoder.decode(files[name]) : null);
 
     const content = getText("content.xml");
@@ -76,7 +78,7 @@ export class OdsReader {
     }
 
     const meta = getText("meta.xml");
-    return new Workbook(sheets, meta === null ? {} : readMeta(meta));
+    return new Workbook(sheets, meta === null ? {} : readMeta(meta), kind);
   }
 
   private readSheet(table: XmlNode, styles: OdsStyles): Sheet {

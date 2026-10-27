@@ -13,6 +13,9 @@ import type {
   WriteResult,
 } from "./schema/types";
 import { FormatSniffer } from "./reader/format-sniffer";
+import { UnsupportedFormatException } from "./exceptions";
+import { SourceArchive } from "./zip/source-archive";
+import { convert as convertOfficeTemplate, type SourceKind } from "./zip/office-template";
 import { readFileBounded } from "./reader/file-input";
 import { OdsReader } from "./reader/ods-reader";
 import { WorkbookSchema } from "./reader/workbook-schema";
@@ -79,6 +82,33 @@ export const Agent = {
    */
   read(input: Uint8Array | ArrayBuffer): Record<string, unknown> {
     return readSpreadsheet(toU8(input), null);
+  },
+
+  /**
+   * Turn an Excel `.xltx` / LibreOffice `.ots` template into its `.xlsx` /
+   * `.ods` twin, or back. `to` is `"document"`, `"template"`, or null to flip.
+   * Universal and synchronous: bytes in, bytes out. Mirrors PHP
+   * `Agent::convertTemplate()`.
+   *
+   * Only the declaration moves: the workbook part's content type in
+   * `[Content_Types].xml`, or the ODF `mimetype` entry together with the
+   * manifest's root media-type (ODF 1.3 requires them to agree). Every other
+   * member is copied as its original zip record, byte for byte.
+   *
+   * Throws `OfficeTemplateRefused` (macro-enabled, mismatched, already that
+   * kind), `ArchiveRefused` (archive guard), or `UnsupportedFormatException`
+   * for a package that is not a spreadsheet.
+   */
+  convertTemplate(input: Uint8Array | ArrayBuffer, to: SourceKind | null = null): Uint8Array {
+    const bytes = toU8(input);
+    const zip = SourceArchive.open(bytes);
+    const raw = zip.read("mimetype");
+    const mimetype = raw === null ? null : new TextDecoder().decode(raw).trim();
+    const odf = mimetype !== null && mimetype.startsWith("application/vnd.oasis.opendocument.spreadsheet");
+    if (!odf && (mimetype !== null || zip.read("xl/workbook.xml") === null)) {
+      throw UnsupportedFormatException.unknownPackage(null, mimetype);
+    }
+    return convertOfficeTemplate(bytes, to);
   },
 
   /** Round-trip an xlsx or ods file on disk back to a schema (Node only). */

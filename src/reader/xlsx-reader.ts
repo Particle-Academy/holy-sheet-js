@@ -3,6 +3,7 @@ import type { NormalizedChart, Sheet } from "../workbook/sheet";
 import { ChartParser } from "./chart-parser";
 import { Workbook } from "../workbook/workbook";
 import { unzipSync } from "../zip";
+import { filesView, sourceKind } from "../zip/office-template";
 import { CommentsParser } from "./comments-parser";
 import { RelsParser } from "./rels-parser";
 import { SharedStringsParser } from "./shared-strings-parser";
@@ -25,6 +26,7 @@ export class XlsxReader {
 
   /** Read an already-unzipped package (name -> bytes), so a caller that sniffed it does not unzip twice. */
   readFiles(files: Record<string, Uint8Array>): Workbook {
+    const kind = sourceKind(filesView(files));
     const getText = (name: string): string | null => (files[name] ? decoder.decode(files[name]) : null);
 
     const stylesXml = getText("xl/styles.xml");
@@ -93,7 +95,7 @@ export class XlsxReader {
     }
 
     const meta = this.parseDocProps(getText("docProps/core.xml"));
-    return new Workbook(sheets, meta);
+    return new Workbook(sheets, meta, kind);
   }
 
   private parseDocProps(coreXml: string | null): Record<string, unknown> {
