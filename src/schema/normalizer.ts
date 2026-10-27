@@ -177,7 +177,7 @@ export class Normalizer {
         address,
         new Cell(
           address,
-          this.coerceValue(rawValue, format, address, sheetName),
+          this.coerceValue(rawValue, format, address, sheetName, true),
           cellData?.formula ?? null,
           format,
           comment,
@@ -293,7 +293,7 @@ export class Normalizer {
       const rawValue = value.value ?? null;
       return new Cell(
         address,
-        this.coerceValue(rawValue, merged, address, sheetName),
+        this.coerceValue(rawValue, merged, address, sheetName, true),
         value.formula ?? null,
         merged,
         comment,
@@ -311,11 +311,20 @@ export class Normalizer {
     );
   }
 
+  /**
+   * `explicit`: the value came from an object cell's `value` key. An explicit
+   * string is the caller saying "this text, exactly", so it is never coerced
+   * to a number: `{value: "+1"}` stays "+1" and `{value: "007"}` stays "007".
+   * Only a date/datetime display format still turns a string into a serial,
+   * because that conversion is what the format asks for. Bare values keep
+   * numeric-string coercion. Mirrors PHP `Normalizer::coerceValue`.
+   */
   private coerceValue(
     value: Any,
     format: CellFormat | null,
     address = "?",
     sheetName?: string,
+    explicit = false,
   ): CellPrimitive {
     if (value === null || value === undefined) return null;
 
@@ -324,6 +333,10 @@ export class Normalizer {
       if (value instanceof Date || (typeof value === "string" && value.trim() !== "")) {
         return DateConverter.toSerial(value, df === "datetime");
       }
+    }
+
+    if (explicit && typeof value === "string") {
+      return value;
     }
 
     if (typeof value === "string" && isNumericString(value)) {

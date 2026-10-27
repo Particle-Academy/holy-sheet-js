@@ -61,6 +61,30 @@ const SCHEMAS: Record<string, unknown> = {
       },
     ],
   },
+  /**
+   * An explicit `{value: <string>}` cell is text exactly as given; the same
+   * strings bare in the next row are still coerced. Mirrored in
+   * holy-sheet-py's parity fixtures.
+   */
+  explicitStrings: {
+    meta: META,
+    sheets: [
+      {
+        name: "Explicit",
+        columns: [{ header: "Explicit" }, { header: "Number" }, { header: "Currency", type: "currency" }],
+        rows: [
+          [{ value: "+1" }, { value: "007" }, { value: "1e5", format: { bold: true } }],
+          ["+1", "007", "1e5"],
+        ],
+        cells: {
+          E1: { value: "-0" },
+          E2: { value: "1.50" },
+          E3: { value: "=1+1" },
+          E4: { value: 42 },
+        },
+      },
+    ],
+  },
   sparse: {
     meta: META,
     sheets: [
