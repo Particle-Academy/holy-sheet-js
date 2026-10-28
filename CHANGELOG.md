@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.11.2] - 2026-10-28
+
 ### Fixed
 
 `Agent.lint()` now follows Excel's formula semantics in the places below,
