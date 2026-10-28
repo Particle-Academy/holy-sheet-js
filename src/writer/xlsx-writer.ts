@@ -231,7 +231,10 @@ export class XlsxWriter {
     let rowsXml = "";
     for (const [rowIndex, row] of [...rows.entries()].sort((a, b) => a[0] - b[0])) {
       let cellsXml = "";
-      const sortedCols = [...row.keys()].sort();
+      // Ascending column INDEX (A..Z, AA, ...), as CT_Row requires. A string
+      // sort gives A, AA, ..., B, and Google Sheets silently drops every cell
+      // after the first out-of-order one. PHP: uksort on CellAddress::index.
+      const sortedCols = [...row.keys()].sort((a, b) => CellAddress.index(a) - CellAddress.index(b));
       for (const col of sortedCols) {
         cellsXml += this.cellXml(row.get(col)!, styles);
       }

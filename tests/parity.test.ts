@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Agent, unzipSync } from "../src";
+import { Agent, CellAddress, unzipSync } from "../src";
 
 // Cross-engine parity: the PHP holy-sheet and this TS port should emit
 // byte-identical OOXML parts for the same input (timestamps pinned via meta).
@@ -209,6 +209,19 @@ const SCHEMAS: Record<string, unknown> = {
         cells: { A1: { value: "Title" }, B2: { value: 42 } },
         rowHeights: { "1": 32, "3": 20.5 },
         print: { orientation: "landscape", fitToWidth: true, footer: { left: "Q3 & Q4", right: "Page {page} of {pages}" } },
+      },
+    ],
+  },
+
+  /** 32 columns in one row, inserted backwards: cells must come out A..Z, AA..AF. */
+  wide: {
+    meta: META,
+    sheets: [
+      {
+        name: "Wide",
+        cells: Object.fromEntries(
+          Array.from({ length: 32 }, (_, i) => 31 - i).map((i) => [`${CellAddress.letter(i)}1`, { value: i }]),
+        ),
       },
     ],
   },

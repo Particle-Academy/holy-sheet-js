@@ -63,10 +63,14 @@ coverage. So:
 
 - **The XML is built as strings.** Attribute order, self-closing style and the
   absence of whitespace between elements are part of the contract.
-- **Cells in a row are emitted in `.sort()` order on the column LETTER**
-  (`src/writer/xlsx-writer.ts`), so a sheet wider than 26 columns writes
-  `A, AA, AB, ..., B, C`. PHP does the same with `ksort`. Replicated on purpose;
-  do not tidy it here alone.
+- **Cells in a row are emitted in ascending column INDEX** (`A..Z, AA, ...`),
+  as OOXML requires (`src/writer/xlsx-writer.ts` sorts on
+  `CellAddress.index`; PHP uses `uksort` on `CellAddress::index`). A bare
+  `.sort()` is a string sort and writes `A, AA, AB, ..., B, C`, which is what
+  all three engines did until 2026-10-28, and it lost data: Google Sheets
+  silently drops every cell in a row after the first out-of-order one, so a
+  wide holy-sheet row came back from a Sheets import/export holding only `A1`.
+  Pinned by `tests/wide-row-cell-order.test.ts` and the `wide` parity fixture.
 - **Never byte-compare the container.** This zip writer (`src/zip/`) pins a
   fixed 1980-01-01 DOS timestamp so its own output is reproducible; PHP writes
   through `ZipArchive` with real times. Only the parts can match.
