@@ -2,6 +2,14 @@
  * Tiny isomorphic XML parser — enough to read OOXML parts (replacing PHP's
  * SimpleXML). Namespace prefixes are stripped so nodes/attributes are queried
  * by local name, matching how the PHP reader accesses SimpleXML.
+ *
+ * This is the one gate for a part of an uploaded file. A part carrying a DOCTYPE
+ * is refused, because no real part has one and an internal subset is the entry
+ * point for entity expansion. This parser has no entity machinery, so the point
+ * here is that it refuses what the other engines refuse and takes no content
+ * from inside a subset. Decode through `decodePart`, so the check sees what the
+ * part actually says whatever encoding it uses. A test fails if `src/` decodes a
+ * part or looks for a DOCTYPE anywhere else.
  */
 
 export interface XmlNode {
@@ -72,6 +80,38 @@ function parseTag(inner: string): { name: string; attrs: Record<string, string> 
   return { name, attrs };
 }
 
+const UTF8 = new TextDecoder();
+
+/**
+ * The encoding a part is written in, or null when this port cannot decode it.
+ * Reads the byte order first, as an XML parser does, then the declaration.
+ */
+function partEncoding(b: Uint8Array): string | null {
+  if (b[0] === 0xff && b[1] === 0xfe) return b[2] === 0 && b[3] === 0 ? null : "utf-16le";
+  if (b[0] === 0xfe && b[1] === 0xff) return "utf-16be";
+  if (b[0] === 0 && b[1] === 0) return null;
+  if (b[0] === 0x3c && b[1] === 0) return b[2] === 0 ? null : "utf-16le";
+  if (b[0] === 0 && b[1] === 0x3c) return "utf-16be";
+  const start = b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf ? 3 : 0;
+  const head = String.fromCharCode(...b.subarray(start, start + 200));
+  const label = /^<\?xml\s[^>]*?encoding\s*=\s*["']([A-Za-z0-9._-]+)["']/.exec(head)?.[1]?.toLowerCase();
+  // Bytes that got this far are not UTF-16, whatever the declaration claims.
+  if (label === undefined || label === "utf-8" || label.startsWith("utf-16") || label === "utf16") return "utf-8";
+  try {
+    new TextDecoder(label);
+    return label;
+  } catch {
+    return null;
+  }
+}
+
+/** A part's text, or "" when this port cannot decode it, which parses as nothing. */
+export function decodePart(bytes: Uint8Array): string {
+  const encoding = partEncoding(bytes);
+  if (encoding === null) return "";
+  return encoding === "utf-8" ? UTF8.decode(bytes) : new TextDecoder(encoding).decode(bytes);
+}
+
 export function parseXml(src: string): XmlNode | null {
   let i = 0;
   const n = src.length;
@@ -96,11 +136,9 @@ export function parseXml(src: string): XmlNode | null {
         i = end < 0 ? n : end + 2;
         continue;
       }
-      if (src.startsWith("<!", i)) {
-        const end = src.indexOf(">", i);
-        i = end < 0 ? n : end + 1;
-        continue;
-      }
+      // A declaration: a DOCTYPE, or nothing a part may hold. Refused here rather
+      // than skipped, because its end cannot be found without parsing its subset.
+      if (src.startsWith("<!", i)) return null;
       if (src[i + 1] === "/") {
         const end = src.indexOf(">", i);
         if (stack.length > 1) stack.pop();

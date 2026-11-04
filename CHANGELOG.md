@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.1 — 2026-11-04
+
+A security patch on the 0.4 kit line. It carries this fix and nothing else.
+
+### Security
+
+- **The reader now refuses a `DOCTYPE` in every XML part of an xlsx, as the PHP
+  engine does.** The parser skipped a declaration without reading it, which could
+  let a crafted file change the values the reader returned. A part is also read
+  in the encoding it declares, so a UTF-16 part is read correctly and is checked
+  for what it really says.
+  **What to do:** upgrade if you read files you did not write. No code changes.
+  Real spreadsheets carry no `DOCTYPE`, so they read exactly as before. A part
+  with one is treated as if it were malformed: a refused `xl/workbook.xml` still
+  throws, and any other part is read as absent. So a refused worksheet gives an
+  empty sheet with its name, and refused shared strings give blank string cells.
+
 ## 1.0.0 — 2026-05-30
 
 Initial Node/TypeScript port of `particle-academy/holy-sheet` (PHP), at

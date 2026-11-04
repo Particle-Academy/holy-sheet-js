@@ -11,9 +11,7 @@ import { RelsParser } from "./rels-parser";
 import { SharedStringsParser } from "./shared-strings-parser";
 import { StylesParser } from "./styles-parser";
 import { WorksheetParser } from "./worksheet-parser";
-import { at, el, els, parseXml } from "./xml";
-
-const decoder = new TextDecoder();
+import { at, decodePart, el, els, parseXml } from "./xml";
 
 /** XLSX reader — bytes → Holy Sheet schema. Mirrors PHP `Reader\XlsxReader`. */
 export class XlsxReader {
@@ -23,7 +21,7 @@ export class XlsxReader {
 
   readWorkbook(bytes: Uint8Array): Workbook {
     const files = unzipSync(bytes);
-    const getText = (name: string): string | null => (files[name] ? decoder.decode(files[name]) : null);
+    const getText = (name: string): string | null => (files[name] ? decodePart(files[name]) : null);
 
     const stylesXml = getText("xl/styles.xml");
     const stylesIndex = stylesXml ? StylesParser.parse(stylesXml) : [];
