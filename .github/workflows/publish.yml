@@ -48,5 +48,8 @@ jobs:
       # Trusted Publishing (OIDC) — no tokens. Requires npm 11.5.1+ (the runner
       # ships npm 10.x), so fetch a fresh npm via npx. The repo's Trusted
       # Publisher (npmjs.com → package → Access) authorizes this workflow.
+      #
+      # This is the 0.4 maintenance line, whose versions sit below main's, so it
+      # publishes under its own dist-tag and never moves `latest`.
       - name: Publish
-        run: npx -y npm@11.18.0 publish --provenance --access public
+        run: npx -y npm@11.18.0 publish --provenance --access public --tag 0.4-maintenance
