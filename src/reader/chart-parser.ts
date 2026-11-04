@@ -21,7 +21,6 @@ function descendants(node: XmlNode | undefined, name: string): XmlNode[] {
 }
 
 function load(xml: string): XmlNode | null {
-  if (/<!DOCTYPE/i.test(xml)) return null;
   return parseXml(xml);
 }
 

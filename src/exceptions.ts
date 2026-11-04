@@ -101,6 +101,13 @@ export class UnsupportedFormatException extends Error {
     );
   }
 
+  static refusedDeclaration(path: string | null = null): UnsupportedFormatException {
+    return new UnsupportedFormatException(
+      `[holy-sheet] cannot read ${path ?? "this file"}: its [Content_Types].xml carries a DOCTYPE or an unreadable encoding, which no spreadsheet package has`,
+      path,
+    );
+  }
+
   static unknownPackage(path: string | null, mimetype: string | null): UnsupportedFormatException {
     const what =
       mimetype !== null && mimetype !== ""

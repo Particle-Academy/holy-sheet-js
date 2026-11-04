@@ -26,8 +26,8 @@
  *
  * @internal
  */
-import { OfficeTemplateRefused } from "../exceptions";
-import { parseXml, type XmlNode } from "../reader/xml";
+import { OfficeTemplateRefused, UnsupportedFormatException } from "../exceptions";
+import { decodePart, parseXml, partIsRefused, type XmlNode } from "../reader/xml";
 import { crc32 } from "./crc32";
 import { SourceArchive, type ArchiveEntry } from "./source-archive";
 
@@ -88,7 +88,6 @@ const FAMILIES: Record<string, Family> = {
 };
 
 const OWN = FAMILIES[FAMILY]!;
-const UTF8 = new TextDecoder("utf-8");
 
 /** What classification needs from a package: a verified SourceArchive, or the readers' unzipped map. */
 export interface PackageView {
@@ -113,7 +112,12 @@ export function filesView(files: Record<string, Uint8Array>): PackageView {
  */
 export function sourceKind(zip: PackageView): SourceKind {
   const types = zip.read("[Content_Types].xml");
-  if (types !== null) return ooxmlKind(zip, types);
+  if (types !== null) {
+    // Reading this as merely unparsable would make the package a plain document,
+    // and every declaration in it would go unchecked.
+    if (partIsRefused(types)) throw UnsupportedFormatException.refusedDeclaration();
+    return ooxmlKind(zip, types);
+  }
   const mimetype = zip.read("mimetype");
   if (mimetype !== null) return odfKind(zip, latin1(mimetype));
   return DOCUMENT;
@@ -363,13 +367,12 @@ function rebuild(zip: SourceArchive, replacements: Map<string, Uint8Array>): Uin
 
 /**
  * Parse with the package's own reader (prefixes stripped, attributes by local
- * name); null when the part is absent, empty or carries a DOCTYPE.
+ * name); null when the part is absent, empty, malformed or refused.
  */
 function dom(xml: Uint8Array | string | null): XmlNode | null {
   if (xml === null) return null;
-  const text = typeof xml === "string" ? UTF8.decode(fromLatin1(xml)) : UTF8.decode(xml);
-  if (text === "" || /<!DOCTYPE/i.test(text)) return null;
-  return parseXml(text);
+  const text = decodePart(typeof xml === "string" ? fromLatin1(xml) : xml);
+  return text === "" ? null : parseXml(text);
 }
 
 function* elements(root: XmlNode): Generator<XmlNode> {

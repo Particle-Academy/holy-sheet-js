@@ -12,7 +12,7 @@ import { odsFormulaToA1 } from "./ods/ods-formula";
 import { OdsStyles } from "./ods/ods-styles";
 import { paragraphs } from "./ods/ods-text";
 import { WorkbookSchema } from "./workbook-schema";
-import { parseXml, type XmlNode } from "./xml";
+import { decodePart, parseXml, type XmlNode } from "./xml";
 
 /** Sheet bounds. A repeat past them is padding, and is not followed. */
 const MAX_ROWS = 1048576;
@@ -21,7 +21,6 @@ const MAX_COLUMNS = 16384;
 /** Days from the spreadsheet epoch (1899-12-30) to the Unix epoch. */
 const UNIX_EPOCH_SERIAL = 25569;
 
-const decoder = new TextDecoder();
 
 type ColumnStyle = [first: number, last: number, style: string];
 
@@ -60,7 +59,7 @@ export class OdsReader {
   /** Read an already-unzipped package (name -> bytes). */
   readFiles(files: Record<string, Uint8Array>): Workbook {
     const kind = sourceKind(filesView(files));
-    const getText = (name: string): string | null => (files[name] ? decoder.decode(files[name]) : null);
+    const getText = (name: string): string | null => (files[name] ? decodePart(files[name]) : null);
 
     const content = getText("content.xml");
     if (content === null) throw new Error("[holy-sheet] missing content.xml");

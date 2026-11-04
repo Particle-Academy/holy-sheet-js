@@ -75,6 +75,16 @@ coverage. So:
   fixed 1980-01-01 DOS timestamp so its own output is reproducible; PHP writes
   through `ZipArchive` with real times. Only the parts can match.
 
+**Every part goes through `src/reader/xml.ts`, which refuses a DOCTYPE.** A
+spreadsheet part never legitimately carries one, and the hand-written parser
+stops at any declaration rather than trying to skip it. Parts reach it through
+`decodePart`, so the check reads what the part says in whatever encoding it uses.
+A refusal looks like malformed XML, so each caller keeps its handling of a part it
+cannot read. The exception is `[Content_Types].xml`, whose declarations decide
+which other refusals apply: a refusal there refuses the package with
+`UnsupportedFormatException`. A test fails if `src/` decodes a part or looks for a
+DOCTYPE anywhere else. `tests/doctype-refusal.test.ts` holds the cases.
+
 **Numbers follow PHP, not JavaScript.** `src/util.ts` holds the PHP-semantics
 helpers (`isNumericString`, numeric-string coercion). `parseInt` / `parseFloat`
 do not mirror PHP's casts (`parseInt("1e5")` is 1, PHP says 100000), so reach
