@@ -9,7 +9,8 @@ export {
   UnsupportedFormatException,
   type ReadLimitName,
 } from "./exceptions";
-export { DEFAULT_READ_LIMITS, type ReadLimitOptions } from "./reader/read-limits";
+export { DEFAULT_READ_LIMITS, type ReadLimitOptions, type AllReadLimits } from "./reader/read-limits";
+export { DEFAULT_ARCHIVE_LIMITS } from "./zip/source-archive";
 export type { RowsOptions } from "./reader/rows-view";
 export { Csv, OptionsInvalid, type CsvOptions, type ConversionReport, type ReportEntry } from "./exchange/csv";
 export type { SourceKind } from "./zip/office-template";

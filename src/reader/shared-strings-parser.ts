@@ -5,11 +5,11 @@ import { el, els, parseXml, type XmlNode } from "./xml";
 export const SharedStringsParser = {
   /** The table is counted before any entry is rendered (`maxSharedStrings`). */
   parse(xml: string, limits: ReadLimits | null = null): string[] {
+    // Counted while streaming, before the parse builds the table's tree.
+    limits?.sharedStringsPart(xml);
     const doc = parseXml(xml);
     if (!doc) return [];
-    const items = els(doc, "si");
-    limits?.sharedStrings(items.length);
-    return items.map(renderSi);
+    return els(doc, "si").map(renderSi);
   },
 };
 

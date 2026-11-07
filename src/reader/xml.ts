@@ -29,7 +29,7 @@
  * do; malformed XML still reads as null.
  */
 
-import { UnsupportedFormatException } from "../exceptions";
+import { ArchiveRefused, UnsupportedFormatException } from "../exceptions";
 
 export interface XmlNode {
   name: string;
@@ -143,10 +143,25 @@ function partEncoding(b: Uint8Array): string | null {
   }
 }
 
+/** V8's longest string, in UTF-16 code units (0x1fffffe8). */
+export const MAX_STRING_LENGTH = 536870888;
+
 function decodeOrNull(bytes: Uint8Array): string | null {
   const encoding = partEncoding(bytes);
   if (encoding === null) return null;
-  return encoding === "utf-8" ? UTF8.decode(bytes) : new TextDecoder(encoding).decode(bytes);
+  try {
+    return encoding === "utf-8" ? UTF8.decode(bytes) : new TextDecoder(encoding).decode(bytes);
+  } catch (e) {
+    // A part decoding to more characters than one string can hold cannot be
+    // read by this port at any limit. Refused as the archive limit it is, before
+    // any parse, rather than escaping as V8's bare Error: measured, the
+    // 1,000,000 x 10 workbook's 553,315,173-byte sheet part did exactly that.
+    if (e instanceof Error && /string longer than/i.test(e.message)) {
+      throw new ArchiveRefused("archive_limit", "maxPartBytes", MAX_STRING_LENGTH, bytes.length,
+        `a ${bytes.length.toLocaleString("en-US")}-byte part decodes to longer than this JavaScript runtime can hold in one string (${MAX_STRING_LENGTH.toLocaleString("en-US")} characters); read it with the PHP or Python package`);
+    }
+    throw e;
+  }
 }
 
 /** A part's text, or "" when this port cannot decode it, which parses as nothing. */
@@ -172,6 +187,73 @@ export function parseXml(src: string, options: ParseXmlOptions = {}): XmlNode | 
   const walked = walk(src, options);
   if (walked.doctype) throw UnsupportedFormatException.refusedPart();
   return walked.root;
+}
+
+/**
+ * Stream a part's elements without building nodes: `visit(depth, name, attrs)`
+ * for every element of the root (depth 0) down to `maxDepth`, by local name,
+ * with attributes parsed only for those. Deeper tags are only stepped over.
+ * Tokenises exactly as `parseXml` does, so it sees the elements the parse would
+ * build; it is how a read counts a part BEFORE the parse that holds all of it
+ * (a 275 MB worksheet parses into about 6 GB of nodes). A DOCTYPE before the
+ * root throws, as `parseXml` does; any other declaration ends the scan.
+ */
+export function scanXml(
+  src: string,
+  maxDepth: number,
+  visit: (depth: number, name: string, attrs: Record<string, string>) => void,
+): void {
+  let i = 0;
+  const n = src.length;
+  let depth = -1; // -1: before the root; 0: inside the root
+  let seenRoot = false;
+  while (i < n) {
+    const lt = src.indexOf("<", i);
+    if (lt < 0) return;
+    i = lt;
+    if (src.startsWith("<!--", i)) {
+      const end = src.indexOf("-->", i);
+      i = end < 0 ? n : end + 3;
+      continue;
+    }
+    if (src.startsWith("<![CDATA[", i)) {
+      const end = src.indexOf("]]>", i);
+      i = end < 0 ? n : end + 3;
+      continue;
+    }
+    if (src.startsWith("<?", i)) {
+      const end = src.indexOf("?>", i);
+      i = end < 0 ? n : end + 2;
+      continue;
+    }
+    if (src.startsWith("<!", i)) {
+      if (!seenRoot && src.slice(i, i + 9).toLowerCase() === "<!doctype") throw UnsupportedFormatException.refusedPart();
+      return;
+    }
+    if (src[i + 1] === "/") {
+      const end = src.indexOf(">", i);
+      if (depth >= 0) depth--;
+      // parseXml keeps only the first top-level element; so does this.
+      if (depth < 0 && seenRoot) return;
+      i = end < 0 ? n : end + 1;
+      continue;
+    }
+    const end = findTagEnd(src, i + 1);
+    const selfClosing = src[end - 1] === "/";
+    depth++;
+    if (depth === 0 && seenRoot) return;
+    seenRoot = true;
+    if (depth <= maxDepth) {
+      const inner = src.slice(i + 1, selfClosing ? end - 1 : end);
+      const { name, attrs } = parseTag(inner);
+      visit(depth, localName(name), attrs);
+    }
+    if (selfClosing) {
+      depth--;
+      if (depth < 0) return;
+    }
+    i = end + 1;
+  }
 }
 
 function walk(

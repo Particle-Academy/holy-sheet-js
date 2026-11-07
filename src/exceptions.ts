@@ -1,11 +1,36 @@
 import type { ValidationError } from "./schema/types";
 
-/** Bounded archive/security refusal; contains no document names or content. */
+/**
+ * Bounded archive/security refusal; contains no document names or content.
+ * Mirrors PHP `ArchiveRefused`. A refusal over a limit (`archive_limit`, and
+ * `read_limit` from ReadLimitExceeded) carries `limit`, `max` and `actual`, so
+ * an app can tell which one to raise; they are null for every other reason. A
+ * bad limit SETTING (`archive_limits`, `read_limits`) names it in the message.
+ */
 export class ArchiveRefused extends Error {
-  constructor(public readonly reason: string) {
-    super(`Source archive refused: ${reason}`);
+  constructor(
+    public readonly reason: string,
+    public readonly limit: string | null = null,
+    public readonly max: number | null = null,
+    public readonly actual: number | null = null,
+    detail: string | null = null,
+  ) {
+    if (detail === null && limit !== null && max !== null && actual !== null) {
+      detail = `${limit} is ${grouped(max)}; this file needs at least ${grouped(actual)}`;
+    }
+    super(`Source archive refused: ${reason}${detail !== null ? ` (${detail})` : ""}`);
     this.name = "ArchiveRefused";
     Object.setPrototypeOf(this, ArchiveRefused.prototype);
+  }
+
+  /** One archive limit exceeded: `archive_limit`, naming it. */
+  static overLimit(limit: string, max: number, actual: number): ArchiveRefused {
+    return new ArchiveRefused("archive_limit", limit, max, actual);
+  }
+
+  /** A bad limit setting: `reason` is `archive_limits` or `read_limits`. */
+  static badSetting(reason: string, key: string, known: boolean): ArchiveRefused {
+    return new ArchiveRefused(reason, null, null, null, known ? `${key} must be a positive integer` : `unknown limit "${key}"`);
   }
 }
 
@@ -40,7 +65,7 @@ export class ReadLimitExceeded extends ArchiveRefused {
     public readonly actual: number,
     subject: string | null = null,
   ) {
-    super("read_limit");
+    super("read_limit", limit, max, actual);
     let [what, one, many, by] = LIMIT_WORDS[limit];
     if (subject !== null) [what, by] = [subject, ""];
     const unit = (n: number): string => (n === 1 ? one : many);

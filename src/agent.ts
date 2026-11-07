@@ -18,7 +18,7 @@ import { SourceArchive } from "./zip/source-archive";
 import { convert as convertOfficeTemplate, type SourceKind } from "./zip/office-template";
 import { readFileBounded } from "./reader/file-input";
 import { OdsReader } from "./reader/ods-reader";
-import { ReadLimits, type ReadLimitOptions } from "./reader/read-limits";
+import { ReadLimits, type AllReadLimits } from "./reader/read-limits";
 import { rowsView, type RowsOptions } from "./reader/rows-view";
 import { WorkbookSchema } from "./reader/workbook-schema";
 import { XlsxReader } from "./reader/xlsx-reader";
@@ -30,7 +30,7 @@ import type { SheetOp } from "./ops/types";
 import toolSchema from "./holy-sheet.schema.json";
 
 /** This package's own version, pinned to package.json by `version.test.ts`. */
-export const VERSION = "2.13.0";
+export const VERSION = "2.14.0";
 
 type Any = any;
 
@@ -42,8 +42,11 @@ function toU8(input: Uint8Array | ArrayBuffer): Uint8Array {
 export interface ReadOptions {
   /** Read only the sheet of this exact name; the others are never parsed. */
   sheet?: string;
-  /** Override any of DEFAULT_READ_LIMITS with a positive integer. */
-  limits?: ReadLimitOptions;
+  /**
+   * Override any of DEFAULT_READ_LIMITS or DEFAULT_ARCHIVE_LIMITS with a
+   * positive integer. Every limit a read enforces is set here.
+   */
+  limits?: AllReadLimits;
 }
 
 /** `sheet` and `limits`, checked before the file is opened. Mirrors PHP `Agent::readOptions`. */
@@ -61,7 +64,7 @@ function readOptions(options: unknown): [string | null, ReadLimits] {
 
 function readSpreadsheet(bytes: Uint8Array, path: string | null, options: ReadOptions = {}): Record<string, unknown> {
   const [sheet, limits] = readOptions(options);
-  const { format, files } = FormatSniffer.sniff(bytes, path);
+  const { format, files } = FormatSniffer.sniff(bytes, path, limits.archive);
   const workbook =
     format === "ods" ? new OdsReader().readFiles(files, sheet, limits) : new XlsxReader().readFiles(files, sheet, limits);
   return WorkbookSchema.fromWorkbook(workbook);
@@ -154,10 +157,10 @@ export const Agent = {
 
   /** Round-trip an xlsx or ods file on disk back to a schema (Node only). */
   async describe(path: string, options: ReadOptions = {}): Promise<Record<string, unknown>> {
-    readOptions(options);
+    const [, limits] = readOptions(options);
     const fs = await import("node:fs");
     if (!fs.existsSync(path)) return { error: "not_found", path };
-    const bytes = await readFileBounded(path);
+    const bytes = await readFileBounded(path, limits.archive.maxArchiveBytes);
     return readSpreadsheet(bytes, path, options);
   },
 

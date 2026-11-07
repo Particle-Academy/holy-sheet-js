@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   Agent,
   ArchiveRefused,
+  DEFAULT_ARCHIVE_LIMITS,
   DEFAULT_READ_LIMITS,
   ReadLimitExceeded,
   SheetNotFoundException,
@@ -34,10 +35,12 @@ function outcome(run: () => unknown): Any {
   try {
     return { value: run() };
   } catch (e) {
-    if (e instanceof ReadLimitExceeded) {
-      return { refused: { reason: e.reason, limit: e.limit, max: e.max, actual: e.actual, message: e.message } };
+    // ReadLimitExceeded is an ArchiveRefused too. A refusal naming a limit
+    // carries which one, its value and the count; every refusal a message.
+    if (e instanceof ArchiveRefused) {
+      const named = e.limit !== null ? { limit: e.limit, max: e.max, actual: e.actual } : {};
+      return { refused: { reason: e.reason, ...named, message: e.message } };
     }
-    if (e instanceof ArchiveRefused) return { refused: { reason: e.reason } };
     if (e instanceof SheetNotFoundException) return { sheetNotFound: { sheet: e.sheet, available: e.available, message: e.message } };
     throw e;
   }
@@ -68,6 +71,7 @@ describe("read options (shared cases)", () => {
 
   it("pins the default limits the ports share", () => {
     expect({ ...DEFAULT_READ_LIMITS }).toEqual(CASES.defaultLimits);
+    expect({ ...DEFAULT_ARCHIVE_LIMITS }).toEqual(CASES.defaultArchiveLimits);
   });
 });
 

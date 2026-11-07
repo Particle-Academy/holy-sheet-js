@@ -41,8 +41,10 @@ Spreadsheet reads and `unzipSync` validate ZIP structure, CRC, unique safe names
 and expansion before XML parsing. Unsafe ZIPs throw exported `ArchiveRefused`
 with a bounded `reason`; ordinary non-spreadsheet formats retain
 `UnsupportedFormatException`. Defaults are 64 MiB archive/part, 256 MiB expanded,
-16,384 entries and 1000:1 ratio. `unzipSync(bytes, limits)` accepts lower host
-ceilings via `ArchiveLimits`. This input layer does not add lossless editing.
+16,384 entries and 1000:1 ratio. `unzipSync(bytes, limits)` takes other ceilings
+via `ArchiveLimits`, and `read()` / `describe()` take them in `limits` (see
+[Large workbooks](#large-workbooks)). This input layer does not add lossless
+editing.
 
 `Agent` (static) mirrors the PHP surface:
 
@@ -96,10 +98,70 @@ try {
 ```
 
 `ReadLimitExceeded` extends `ArchiveRefused` (reason `read_limit`). The archive
-limits above still apply first and are the tighter bound today: a worksheet part
-over 64 MiB is refused, which 10 mixed columns reach at about 120,000 rows. The
-PHP and Python packages take the same options and refuse with the same reasons
-and messages.
+limits above apply first: at the defaults a worksheet part over 64 MiB is
+refused, which 10 mixed columns reach at about 120,000 rows. Since 2.14 they are
+set through the same `limits` option; see [Large workbooks](#large-workbooks).
+The PHP and Python packages take the same options and refuse with the same
+reasons and messages.
+
+### Large workbooks
+
+Every limit a read enforces is a setting (2.14+), in `read()` and
+`describe()`'s `limits`: `maxArchiveBytes` (default 64 MiB), `maxEntries`
+(16,384), `maxPartBytes` (64 MiB), `maxExpandedBytes` (256 MiB),
+`maxCompressionRatio` (1,000), `maxRows` (1,048,576), `maxColumns` (16,384),
+`maxCells` (20,000,000), `maxSharedStrings` (20,000,000).
+`DEFAULT_ARCHIVE_LIMITS` and `DEFAULT_READ_LIMITS` hold the defaults.
+
+```ts
+Agent.read(bytes, { limits: { maxPartBytes: 160 * 1048576, maxCells: 2_500_000 } });
+```
+
+A refusal names the limit to raise (`e.limit`, `e.max`, `e.actual`). The byte
+limits are checked from the zip's central directory before anything is
+inflated; rows, columns, cells and shared strings are counted by scanning each
+part's text before it is parsed, and the cell count stops the moment it passes
+`maxCells`. Measured, 500,000 rows x 10 columns (a 275 MB sheet part): refused
+at the defaults in 0.03 s at a 100 MiB process peak; with the part limits raised
+and `maxCells` at 1,000,000, refused in 3.9 s at 601 MiB.
+
+**This port's hard ceiling: one part of at most 536,870,888 characters.** That
+is V8's longest string, and a part must be one string to be parsed, so no limit
+raises it. A part past it is refused as `ArchiveRefused` (`archive_limit`,
+`limit` `maxPartBytes`, `max` 536,870,888). At the measured 553 bytes per row of
+10 mixed columns, that is about 970,000 rows; read anything bigger with the PHP
+or Python package.
+
+Measured, Node 24, Windows 11, one read per process, every limit raised to
+admit the file (peak is the process's committed memory). PHP and Python are
+the sibling packages on the same files.
+
+| Rows x columns | Cells | Sheet part | JavaScript | PHP | Python |
+|---|---|---|---|---|---|
+| 100,000 x 10 | 1,100,010 | 59 MB | 7.1 s, 1.5 GB | 12.5 s, 1.6 GB | 19.6 s, 1.1 GB |
+| 250,000 x 10 | 2,500,010 | 137 MB | 18.2 s, 2.9 GB | 26.4 s, 3.6 GB | 52.4 s, 2.4 GB |
+| 500,000 x 10 | 5,000,010 | 275 MB | 38.6 s, 6.0 GB | 54.0 s, 7.2 GB | 98.4 s, 4.8 GB |
+| 100,000 x 50 | 5,000,050 | 284 MB | 38.7 s, 6.1 GB | 59.8 s, 7.3 GB | 94.5 s, 4.9 GB |
+| 1,000,000 x 10 | 10,000,010 | 553 MB | refused: too long for one string (4.7 s, 1.2 GB) | over 12 GB (stopped) | 180.8 s, 9.7 GB |
+| 300,000 x 50 | 15,000,050 | 865 MB | refused: too long for one string | over 12 GB (stopped) | over 12 GB (stopped) |
+| 2,000,000 x 10 (two sheets) | 20,000,020 | 2 x 553 MB | refused: too long for one string | over 12 GB (stopped) | over 12 GB (stopped) |
+
+"Stopped" is a run killed at a 12 GB cap. The refusals at 300,000 x 50 and
+2,000,000 x 10 were measured before the typed refusal landed (V8's bare `Error`
+then); the 1,000,000 x 10 one is this release.
+
+Per cell this port costs about 1,260 bytes and 7 to 8 microseconds; a sheet
+part is about 55 to 58 bytes per cell, so set `maxPartBytes` at roughly 60
+bytes times the cells you want to admit. It crosses 2 GB at about 1,600,000
+cells and 30 s at about 4,000,000 (interpolated). Give Node
+`--max-old-space-size` above the peak you expect.
+
+**Recommended:** about **1,500,000 cells** for a read in a request. For a
+**large CRM export** in a background job, up to 2,500,000 cells: `maxPartBytes`
+167,772,160 (160 MiB) and `maxCells` 2,500,000, the rest at their defaults,
+with `--max-old-space-size=4096`; expect about 20 seconds and 3 GB. Past that,
+or near this port's string ceiling, a read in memory is the wrong tool: that is
+where a streaming reader is needed, and this package does not have one.
 
 ### CSV
 

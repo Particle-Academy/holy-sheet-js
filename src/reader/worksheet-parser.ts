@@ -18,10 +18,11 @@ export const WorksheetParser = {
     sharedStrings: string[] = [],
     limits: ReadLimits | null = null,
   ): Sheet {
+    // Counted while streaming, BEFORE the parse builds the tree: a limit checked
+    // on the parsed part would come after the memory was spent.
+    limits?.worksheetPart(worksheetXml);
     const xml = parseXml(worksheetXml);
     if (!xml) return new Sheet(name);
-    // Counted from the parsed part before one Cell is built.
-    limits?.worksheet(xml);
 
     const cells = parseCells(xml, stylesIndex, comments, sharedStrings);
     const merges = parseMerges(xml);

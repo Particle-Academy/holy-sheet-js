@@ -10,6 +10,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.14.0] - 2026-11-07
+
+Owner decision, 2026-11-07: "all limitations need to be a config option so apps
+can build to their use case." Every default stays where it was; an app can now
+set every limit a read enforces. Mirrors PHP `particle-academy/holy-sheet`
+2.14.0: same names, defaults, refusals and messages, pinned by the shared
+`read-options/cases.json`.
+
+### Added
+
+- **Every limit is configurable.** `read(bytes, { limits })` and
+  `describe(path, { limits })` now take the archive guard's five limits beside
+  the four read limits: `maxArchiveBytes`, `maxEntries`, `maxPartBytes`,
+  `maxExpandedBytes`, `maxCompressionRatio`, `maxRows`, `maxColumns`,
+  `maxCells`, `maxSharedStrings` (type `AllReadLimits`). Until now only
+  `unzipSync` accepted archive limits, so `read()` refused any sheet part over
+  64 MiB (about 120,000 rows of 10 columns) whatever the app wanted.
+  `DEFAULT_ARCHIVE_LIMITS` is now exported. `describe()` bounds the file by the
+  read's `maxArchiveBytes`, not the default.
+  **What to do:** nothing; every default is unchanged. To read a large export,
+  raise the limits it needs; the README's "Large workbooks" section has the
+  measured memory and time, and this port's hard ceiling.
+- **A refusal over a limit says which one.** `ArchiveRefused` now carries
+  `limit`, `max` and `actual` (null when the refusal is not about a limit), and
+  an `archive_limit` message names them: `Source archive refused: archive_limit
+  (maxPartBytes is 67,108,864; this file needs at least 275,497,997)`.
+
+### Changed
+
+- **The read limits are now counted BEFORE the part is parsed, not after.**
+  The worksheet was parsed into a full node tree and counted afterwards, so
+  with `maxPartBytes` raised, a 500,000-row upload grew to 6.0 GB before
+  `maxCells` could refuse it. Rows, columns and cells are now counted by
+  scanning the part's text (`scanXml`, no nodes), and the cell count refuses the
+  moment the workbook passes `maxCells`; shared strings are counted the same
+  way. Measured peak at refusal, 500,000 rows x 10 columns (a 275,497,997-byte
+  sheet part):
+  - at the **defaults**: refused by `maxPartBytes`, from the zip's central
+    directory before anything is inflated, in 0.03 s at a **100 MiB** process
+    peak (most of it Node itself);
+  - with the part limits raised and `maxCells` at 1,000,000: refused by
+    `maxCells` in 3.9 s at **601 MiB**, not 6.0 GB.
+  **What to do:** nothing; reads that succeeded still succeed with the same
+  result. The scan is a second pass over the text and measured 9 to 18% more
+  time on a full read (5,000,000 cells: 38.6 s against 32.7 s).
+- **A bad limit setting names itself**: `read_limits (maxRows must be a
+  positive integer)`, `archive_limits (maxPartBytes must be a positive
+  integer)`, `read_limits (unknown limit "maxBogus")`. The reasons are
+  unchanged. **What to do:** nothing, unless you compare `message` exactly;
+  compare `reason`.
+
+### Fixed
+
+- **A part too long for one JavaScript string is a typed refusal, not a bare
+  `Error`.** V8 cannot hold a string over 536,870,888 characters, so this port
+  cannot read a worksheet part past that at any limit. Measured: the
+  1,000,000 x 10 workbook (a 553,315,173-byte sheet part) threw `Error: Cannot
+  create a string longer than 0x1fffffe8 characters`. It is now
+  `ArchiveRefused` (`archive_limit`, `limit` `maxPartBytes`, `max` 536,870,888),
+  saying so, in 4.7 s at 1,183 MiB. At the measured 553 bytes per row of 10
+  mixed columns, that ceiling falls at about 970,000 rows (derived from the
+  part sizes, not bisected).
+  **What to do:** nothing; catch `ArchiveRefused` as before. Read workbooks
+  past it with the PHP or Python package.
+
 ## [2.13.0] - 2026-11-07
 
 The port of PHP holy-sheet 2.13.0, approved in the change council as

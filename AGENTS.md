@@ -90,6 +90,15 @@ declaration or undecodable encoding, and that refuses the package
 (`refusedDeclaration()`). A test fails if `src/` decodes a part or looks for a
 DOCTYPE anywhere else. `tests/doctype-refusal.test.ts` holds the cases.
 
+**Read limits are counted BEFORE a part is parsed, never after.**
+`ReadLimits.worksheetPart()` and `sharedStringsPart()` run `scanXml` over the
+part's text (no nodes) before `parseXml`. Don't move a count onto the parsed
+tree: it is built first, and a 500,000-row sheet reached 6.0 GB before a
+post-parse count could refuse it. `scanXml` tokenises exactly as `walk` does,
+so keep the two in step. A part too long for one V8 string (536,870,888
+characters) is refused in `decodeOrNull` as a typed `archive_limit`; no limit
+raises that ceiling.
+
 **Dates follow the workbook's date system.** `<workbookPr date1904="1"/>` (or
 `"true"`) moves the epoch to 1904-01-01; `Workbook.date1904` carries it to
 `WorkbookSchema`, which converts a date-formatted cell's value AND its formula's

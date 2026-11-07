@@ -1,5 +1,6 @@
 import { ArchiveRefused, UnsupportedFormatException } from "../exceptions";
 import { unzipSync } from "../zip";
+import type { ArchiveLimits } from "../zip/source-archive";
 import { phpTrim } from "./ods/ns";
 
 export type SpreadsheetFormat = "xlsx" | "ods";
@@ -24,10 +25,11 @@ export const FormatSniffer = {
   sniff(
     bytes: Uint8Array,
     path: string | null = null,
+    archiveLimits: ArchiveLimits = {},
   ): { format: SpreadsheetFormat; files: Record<string, Uint8Array> } {
     let files: Record<string, Uint8Array>;
     try {
-      files = unzipSync(bytes);
+      files = unzipSync(bytes, archiveLimits);
     } catch (e) {
       if (e instanceof ArchiveRefused && (e.reason !== "archive_corrupt" || (bytes[0] === 80 && bytes[1] === 75))) throw e;
       // A real zip this reader cannot inflate is a different failure; say so.

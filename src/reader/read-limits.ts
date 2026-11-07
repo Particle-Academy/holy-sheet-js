@@ -1,6 +1,7 @@
 import { ArchiveRefused, ReadLimitExceeded, type ReadLimitName } from "../exceptions";
 import { CellAddress } from "../workbook/cell-address";
-import { el, els, type XmlNode } from "./xml";
+import { DEFAULT_ARCHIVE_LIMITS, resolveArchiveLimits, type ArchiveLimits } from "../zip/source-archive";
+import { scanXml } from "./xml";
 
 /** Positive integers keyed by limit name; any subset overrides the defaults. */
 export interface ReadLimitOptions {
@@ -9,6 +10,9 @@ export interface ReadLimitOptions {
   maxCells?: number;
   maxSharedStrings?: number;
 }
+
+/** What `read()` / `describe()` take as `limits`: the read limits and the archive limits. */
+export type AllReadLimits = ReadLimitOptions & ArchiveLimits;
 
 /**
  * The defaults. `maxRows` / `maxColumns` are Excel's own sheet limits;
@@ -36,16 +40,33 @@ export class ReadLimits {
   private cells = 0;
   private readonly letterCache = new Map<string, number>();
 
-  private constructor(private readonly limits: Required<ReadLimitOptions>) {}
+  private constructor(
+    private readonly limits: Required<ReadLimitOptions>,
+    /** The archive limits, resolved over their defaults. */
+    readonly archive: Required<ArchiveLimits>,
+  ) {}
 
+  /**
+   * Any of the nine limits, by name (since 2.14.0 the archive limits too).
+   * A read limit that is not a positive integer, or a name that is no limit,
+   * is `ArchiveRefused("read_limits")`; a bad archive limit is
+   * `ArchiveRefused("archive_limits")`. The message names the setting. Every
+   * key is checked before anything is opened. Mirrors PHP `ReadLimits::from`.
+   */
   static from(options: unknown = {}): ReadLimits {
     if (options === null || typeof options !== "object" || Array.isArray(options)) throw new ArchiveRefused("read_limits");
+    const read: Record<string, unknown> = {};
+    const archive: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(options)) {
-      if (!Object.prototype.hasOwnProperty.call(DEFAULT_READ_LIMITS, key) || !Number.isSafeInteger(value) || (value as number) < 1) {
-        throw new ArchiveRefused("read_limits");
+      if (Object.prototype.hasOwnProperty.call(DEFAULT_ARCHIVE_LIMITS, key)) {
+        archive[key] = value;
+        continue;
       }
+      const known = Object.prototype.hasOwnProperty.call(DEFAULT_READ_LIMITS, key);
+      if (!known || !Number.isSafeInteger(value) || (value as number) < 1) throw ArchiveRefused.badSetting("read_limits", key, known);
+      read[key] = value;
     }
-    return new ReadLimits({ ...DEFAULT_READ_LIMITS, ...(options as ReadLimitOptions) });
+    return new ReadLimits({ ...DEFAULT_READ_LIMITS, ...(read as ReadLimitOptions) }, resolveArchiveLimits(archive));
   }
 
   max(limit: ReadLimitName): number {
@@ -65,39 +86,72 @@ export class ReadLimits {
   }
 
   /**
-   * Count a parsed worksheet: the highest row a `<row r>` or a cell uses, the
-   * highest column a cell or a `<col max>` uses, and every `<c>` element.
+   * Count a worksheet part BEFORE it is parsed: the highest row a `<row r>` or
+   * a cell uses, the highest column a cell or a `<col max>` uses, and every
+   * `<c>` element. Streams the text (`scanXml`), building no nodes: until
+   * 2.14.0 this walked the parsed tree, so a limit refused a 10,000,000-cell
+   * sheet only after the whole tree was built. Matches what the parse reads:
+   * the root's first `cols` and `sheetData`, their `col` / `row` children, and
+   * a row's `c` children, by local name. The cell count refuses the moment
+   * the workbook passes `maxCells` (the message says "at least"). Mirrors PHP
+   * `ReadLimits::worksheetPart`.
    */
-  worksheet(xml: XmlNode): void {
+  worksheetPart(src: string): void {
     let rows = 0;
     let columns = 0;
     let cells = 0;
-    for (const col of els(el(xml, "cols"), "col")) columns = Math.max(columns, attrNumber(col.attrs["max"]));
-    for (const row of els(el(xml, "sheetData"), "row")) {
-      rows = Math.max(rows, attrNumber(row.attrs["r"]));
-      for (const c of els(row, "c")) {
-        cells++;
-        const r = c.attrs["r"] ?? "";
-        const m = /^([A-Z]{1,7})([0-9]{1,15})$/.exec(r);
-        if (m) {
-          // The canonical form every writer emits; address() gives the same answer.
-          let col = this.letterCache.get(m[1]!);
-          if (col === undefined) {
-            col = CellAddress.index(m[1]!);
-            if (this.letterCache.size < 20000) this.letterCache.set(m[1]!, col);
-          }
-          columns = Math.max(columns, col + 1);
-          rows = Math.max(rows, Number(m[2]));
-          continue;
-        }
-        const at = readAddress(r);
-        if (at !== null) {
-          columns = Math.max(columns, at[0] + 1);
-          rows = Math.max(rows, at[1]);
-        }
+    let seenCols = false;
+    let seenSheetData = false;
+    let inside: "cols" | "sheetData" | null = null;
+    let inRow = false;
+    scanXml(src, 3, (depth, name, attrs) => {
+      if (depth === 1) {
+        inside = null;
+        if (name === "cols" && !seenCols) [inside, seenCols] = ["cols", true];
+        else if (name === "sheetData" && !seenSheetData) [inside, seenSheetData] = ["sheetData", true];
+        return;
       }
-    }
+      if (depth === 2) {
+        inRow = false;
+        if (inside === "cols" && name === "col") columns = Math.max(columns, attrNumber(attrs["max"]));
+        else if (inside === "sheetData" && name === "row") {
+          rows = Math.max(rows, attrNumber(attrs["r"]));
+          inRow = true;
+        }
+        return;
+      }
+      if (depth !== 3 || !inRow || name !== "c") return;
+      if (++cells + this.cells > this.limits.maxCells) {
+        throw new ReadLimitExceeded("maxCells", this.limits.maxCells, cells + this.cells);
+      }
+      [columns, rows] = this.cellExtent(attrs["r"] ?? "", columns, rows);
+    });
     this.sheet(rows, columns, cells);
+  }
+
+  /** Count a shared-strings part's `si` entries BEFORE it is parsed. Mirrors PHP `ReadLimits::sharedStringsPart`. */
+  sharedStringsPart(src: string): void {
+    let count = 0;
+    scanXml(src, 1, (depth, name) => {
+      if (depth === 1 && name === "si") count++;
+    });
+    this.sharedStrings(count);
+  }
+
+  /** The extent one cell address adds: `[columns, rows]` after it. */
+  private cellExtent(r: string, columns: number, rows: number): [number, number] {
+    const m = /^([A-Z]{1,7})([0-9]{1,15})$/.exec(r);
+    if (m) {
+      // The canonical form every writer emits; address() gives the same answer.
+      let col = this.letterCache.get(m[1]!);
+      if (col === undefined) {
+        col = CellAddress.index(m[1]!);
+        if (this.letterCache.size < 20000) this.letterCache.set(m[1]!, col);
+      }
+      return [Math.max(columns, col + 1), Math.max(rows, Number(m[2]))];
+    }
+    const at = readAddress(r);
+    return at === null ? [columns, rows] : [Math.max(columns, at[0] + 1), Math.max(rows, at[1])];
   }
 }
 

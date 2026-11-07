@@ -12,6 +12,21 @@ export const DEFAULT_ARCHIVE_LIMITS: Readonly<Required<ArchiveLimits>> = Object.
   maxArchiveBytes: 67108864, maxEntries: 16384, maxPartBytes: 67108864,
   maxExpandedBytes: 268435456, maxCompressionRatio: 1000,
 });
+
+/**
+ * The given limits over the defaults. Each must be a known name and a positive
+ * integer; anything else is `ArchiveRefused("archive_limits")` naming the
+ * setting. Mirrors PHP `SourceArchive::resolveLimits`.
+ */
+export function resolveArchiveLimits(options: unknown = {}): Required<ArchiveLimits> {
+  const given = (options ?? {}) as Record<string, unknown>;
+  for (const [key, value] of Object.entries(given)) {
+    const known = Object.prototype.hasOwnProperty.call(DEFAULT_ARCHIVE_LIMITS, key);
+    if (!known || !Number.isSafeInteger(value) || (value as number) < 1) throw ArchiveRefused.badSetting("archive_limits", key, known);
+  }
+  return { ...DEFAULT_ARCHIVE_LIMITS, ...(given as ArchiveLimits) };
+}
+
 type Part = { name: string; method: number; crc: number; size: number; compressed: number; start: number } & ArchiveEntry;
 
 /**
@@ -43,11 +58,8 @@ export class SourceArchive {
   ) {}
 
   static open(input: Uint8Array, options: ArchiveLimits = {}): SourceArchive {
-    for (const [key, value] of Object.entries(options)) {
-      if (!Object.prototype.hasOwnProperty.call(DEFAULT_ARCHIVE_LIMITS, key) || !Number.isSafeInteger(value) || value < 1) throw new ArchiveRefused("archive_limits");
-    }
-    const limits = { ...DEFAULT_ARCHIVE_LIMITS, ...options };
-    if (input.length > limits.maxArchiveBytes) throw new ArchiveRefused("archive_limit");
+    const limits = resolveArchiveLimits(options);
+    if (input.length > limits.maxArchiveBytes) throw ArchiveRefused.overLimit("maxArchiveBytes", limits.maxArchiveBytes, input.length);
     const bytes = input.slice();
     const [records, comment] = index(bytes, limits);
     const parts = new Map<string, Uint8Array>();
@@ -91,7 +103,7 @@ function index(bytes: Uint8Array, limits: Required<ArchiveLimits>): [Part[], Uin
   if (end === -1) corrupt();
   const count = u16(end + 10), directory = u32(end + 16);
   if (u16(end + 4) !== 0 || u16(end + 6) !== 0 || u16(end + 8) !== count || count === 65535) throw new ArchiveRefused("archive_unsupported");
-  if (count > limits.maxEntries) throw new ArchiveRefused("archive_limit");
+  if (count > limits.maxEntries) throw ArchiveRefused.overLimit("maxEntries", limits.maxEntries, count);
   if (end - directory < count * 46) corrupt();
   const records: Part[] = [], seen = new Set<string>(), regions: [number, number][] = [];
   let at = directory, expanded = 0;
@@ -117,7 +129,14 @@ function index(bytes: Uint8Array, limits: Required<ArchiveLimits>): [Part[], Uin
     const name = partName(bytes.subarray(at + 46, at + 46 + nameLength), flags);
     if (seen.has(name)) throw new ArchiveRefused("archive_duplicate");
     seen.add(name); expanded += size;
-    if (size > limits.maxPartBytes || expanded > limits.maxExpandedBytes || size > Math.max(1, compressed) * limits.maxCompressionRatio) throw new ArchiveRefused("archive_limit");
+    // In PHP's order, so the same file names the same limit in every port.
+    if (size > limits.maxPartBytes) throw ArchiveRefused.overLimit("maxPartBytes", limits.maxPartBytes, size);
+    if (expanded > limits.maxExpandedBytes) throw ArchiveRefused.overLimit("maxExpandedBytes", limits.maxExpandedBytes, expanded);
+    const packed = Math.max(1, compressed);
+    if (size > packed * limits.maxCompressionRatio) {
+      // The ratio rounded up: over the limit exactly when the check fires.
+      throw ArchiveRefused.overLimit("maxCompressionRatio", limits.maxCompressionRatio, Math.ceil(size / packed));
+    }
     if (method === 0 && compressed !== size) corrupt();
     extra(at + 46 + nameLength, extraLength);
     bounds(local, 30, directory);
