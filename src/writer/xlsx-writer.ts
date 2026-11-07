@@ -7,6 +7,7 @@ import { formatFloat } from "../util";
 import { zipSync, type ZipFile } from "../zip";
 import { StylesRegistry } from "./styles-registry";
 import { ChartXml } from "./chart-xml";
+import { DataValidations } from "../schema/data-validations";
 
 const encoder = new TextEncoder();
 
@@ -277,6 +278,7 @@ export class XlsxWriter {
       colsXml +
       `<sheetData>${rowsXml}</sheetData>` +
       mergesXml +
+      DataValidations.xml(sheet.dataValidations, xmlEscape) +
       pageSetupXml +
       headerFooterXml +
       (sheet.charts.length > 0 ? `<drawing r:id="${drawingRelId(sheet.hasComments())}"/>` : "") +

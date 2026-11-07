@@ -2,6 +2,7 @@ import type { Cell } from "./cell";
 import type { CellComment } from "./cell-comment";
 import type { MergedRegion } from "./merged-region";
 import type { ChartRange } from "./chart-range";
+import type { NormalizedValidation } from "../schema/data-validations";
 
 /** How a sheet prints. Mirrors the PHP `Sheet::$print` array. */
 export interface PrintSetup {
@@ -39,10 +40,12 @@ export class Sheet {
     readonly rowHeights: Map<number, number> = new Map(),
     readonly print: PrintSetup | null = null,
     readonly charts: NormalizedChart[] = [],
+    /** Data validation rules in normal form: column rules first, then the sheet's own list. */
+    readonly dataValidations: NormalizedValidation[] = [],
   ) {}
 
   withCharts(charts: NormalizedChart[]): Sheet {
-    return new Sheet(this.name, this.cells, this.mergedRegions, this.columnWidths, this.frozenRows, this.frozenCols, this.rowHeights, this.print, charts);
+    return new Sheet(this.name, this.cells, this.mergedRegions, this.columnWidths, this.frozenRows, this.frozenCols, this.rowHeights, this.print, charts, this.dataValidations);
   }
 
   /** rowNumber → (colLetter → Cell), sorted by ascending row number. */

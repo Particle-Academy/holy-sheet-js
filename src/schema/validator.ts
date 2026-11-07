@@ -1,5 +1,6 @@
 import { SchemaException } from "../exceptions";
 import { isNumericString, isPlainObject, numericStringToNumber, typeOf } from "../util";
+import { DataValidations } from "./data-validations";
 import { CellAddress } from "../workbook/cell-address";
 import { ChartRange } from "../workbook/chart-range";
 import { ColumnWidths } from "./column-widths";
@@ -48,8 +49,13 @@ export class Validator {
       return errors;
     }
 
+    const sheetNames: string[] = [];
+    for (const sheet of schema.sheets) {
+      if (isPlainObject(sheet) && typeof sheet.name === "string") sheetNames.push(sheet.name);
+    }
+
     schema.sheets.forEach((sheet: Any, i: number) => {
-      errors.push(...this.validateSheet(sheet, `sheets[${i}]`));
+      errors.push(...this.validateSheet(sheet, `sheets[${i}]`, sheetNames));
     });
 
     return errors;
@@ -66,7 +72,7 @@ export class Validator {
     return { schema: repairedSchema, errors, repairs };
   }
 
-  private validateSheet(sheet: Any, path: string): ValidationError[] {
+  private validateSheet(sheet: Any, path: string, sheetNames: string[] = []): ValidationError[] {
     const errors: ValidationError[] = [];
 
     if (!isPlainObject(sheet)) {
@@ -120,8 +126,15 @@ export class Validator {
           ),
         );
       } else {
+        const dataRows = Array.isArray(sheet.rows) ? sheet.rows.length : 0;
+        const ownSheet = typeof sheet.name === "string" ? sheet.name : "";
         sheet.columns.forEach((col: Any, j: number) => {
           errors.push(...this.validateColumn(col, `${path}.columns[${j}]`));
+          if (isPlainObject(col) && Object.prototype.hasOwnProperty.call(col, "validation")) {
+            for (const [sub, expected, got, value, hint] of DataValidations.problems(col.validation, ownSheet, sheetNames, true, dataRows)) {
+              errors.push(error(`${path}.columns[${j}].validation${sub}`, expected, got, value, hint));
+            }
+          }
         });
       }
     }
@@ -267,6 +280,23 @@ export class Validator {
 
     if (sheet.charts != null) {
       errors.push(...validateCharts(sheet.charts, path, typeof sheet.name === "string" ? sheet.name : ""));
+    }
+
+    if (Object.prototype.hasOwnProperty.call(sheet, "dataValidations")) {
+      const list = sheet.dataValidations;
+      // PHP's array: [] and {} are one value, so an empty object is an empty list.
+      const isList = Array.isArray(list) || (isPlainObject(list) && Object.keys(list).length === 0);
+      if (!isList) {
+        errors.push(error(`${path}.dataValidations`, "a list of validations", typeOf(list), list,
+          'dataValidations is a list: [{"range": "B2:B100", "type": "list", "values": ["Open", "Closed"]}].'));
+      } else {
+        const ownSheet = typeof sheet.name === "string" ? sheet.name : "";
+        (Array.isArray(list) ? list : []).forEach((dv: Any, k: number) => {
+          for (const [sub, expected, got, value, hint] of DataValidations.problems(dv, ownSheet, sheetNames, false, 0)) {
+            errors.push(error(`${path}.dataValidations[${k}]${sub}`, expected, got, value, hint));
+          }
+        });
+      }
     }
 
     if (sheet.print != null) {

@@ -12,6 +12,7 @@ import { SchemaException } from "../exceptions";
 import { isNumericString, isPlainObject, numericStringToNumber, typeOf } from "../util";
 import type { CellPrimitive } from "./types";
 import { Theme } from "./theme";
+import { DataValidations } from "./data-validations";
 
 type Any = any; // input is loose agent JSON
 
@@ -140,6 +141,7 @@ export class Normalizer {
       normalizeRowHeights(sheet.rowHeights),
       normalizePrint(sheet.print),
       normalizeCharts(sheet.charts, name, cells),
+      DataValidations.forSheet(sheet, name),
     );
   }
 

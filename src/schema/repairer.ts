@@ -1,5 +1,6 @@
 import { isNumericString, isPlainObject, numericStringToNumber } from "../util";
 import { ColumnWidths } from "./column-widths";
+import { DV_OPERATORS, DV_STYLES, DV_TYPES } from "./data-validations";
 
 const VALID_THEMES = ["default", "minimal", "plain", "business"];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/;
@@ -105,6 +106,22 @@ export class Repairer {
       }
     }
 
+    // Data validation enums in the wrong case. Only an exact match ignoring
+    // case is repaired; 'dropdown' is not 'list', and saying so is the
+    // validator's job.
+    if (Array.isArray(sheet.columns)) {
+      sheet.columns.forEach((col: Any, colIdx: number) => {
+        if (isPlainObject(col) && isPlainObject(col.validation)) {
+          this.repairValidation(col.validation, `${path}.columns[${colIdx}].validation`);
+        }
+      });
+    }
+    if (Array.isArray(sheet.dataValidations)) {
+      sheet.dataValidations.forEach((dv: Any, k: number) => {
+        if (isPlainObject(dv)) this.repairValidation(dv, `${path}.dataValidations[${k}]`);
+      });
+    }
+
     // Column-driven repairs
     if (sheet.columns != null && sheet.rows != null && Array.isArray(sheet.columns) && Array.isArray(sheet.rows)) {
       this.repairColumnTypeInference(sheet, path);
@@ -112,6 +129,24 @@ export class Repairer {
     }
 
     return sheet;
+  }
+
+  private repairValidation(dv: Any, path: string): void {
+    this.repairCase(dv, "type", DV_TYPES, `${path}.type`);
+    this.repairCase(dv, "operator", DV_OPERATORS, `${path}.operator`);
+    if (isPlainObject(dv.error)) this.repairCase(dv.error, "style", DV_STYLES, `${path}.error.style`);
+  }
+
+  private repairCase(box: Any, key: string, allowed: string[], path: string): void {
+    const value = box[key];
+    if (typeof value !== "string" || allowed.includes(value)) return;
+    for (const candidate of allowed) {
+      if (candidate.toLowerCase() === value.toLowerCase()) {
+        box[key] = candidate;
+        this.repairs.push(`changed '${path}' from '${value}' to '${candidate}'`);
+        break;
+      }
+    }
   }
 
   private repairColumnTypeInference(sheet: Any, path: string): void {

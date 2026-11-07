@@ -76,6 +76,48 @@ when there is one). What maps and what does not is listed in the PHP package's
 [`docs/ReadPath.md`](https://github.com/Particle-Academy/holy-sheet/blob/main/docs/ReadPath.md#opendocument-spreadsheets-ods);
 this port reads the same fixtures and is diffed against it.
 
+### Data validation (dropdowns)
+
+A rule on what a person may type into cells: a dropdown, or a bound on a whole
+number, a decimal, a date or a text length, with an optional input prompt and
+error alert. Set it on a column to cover that column's data rows, or list it on
+the sheet with a `range` (the form a template uses, running past its sample
+rows):
+
+```ts
+Agent.toBytes({
+  sheets: [
+    {
+      name: "Catalog",
+      columns: [
+        { header: "SKU" },
+        { header: "Status", validation: { type: "list", values: ["Draft", "Live", "Retired"] } },
+      ],
+      rows: [["A-1", "Draft"]],
+      dataValidations: [
+        { range: "C2:C500", type: "list", source: "'Lists'!A1:A20",
+          prompt: { title: "Category", text: "Pick a category." },
+          error: { style: "stop", title: "Unknown category", text: "Choose from the list." } },
+        { range: "D2:D500", type: "whole", operator: "between", min: 0, max: 1000 },
+        { range: "E2:E500", type: "date", operator: "greaterThanOrEqual", value: "2026-01-01" },
+      ],
+    },
+    { name: "Lists", cells: { A1: "Tools", A2: "Parts" } },
+  ],
+});
+```
+
+`type` is `list`, `whole`, `decimal`, `date` (`YYYY-MM-DD`) or `textLength`. A
+`list` takes `values` (inline) or `source` (a range, on this sheet or another),
+never both; inline choices cannot contain a comma and must fit in 255 characters
+joined by commas, Excel's limit, which `validate()` enforces. Every other type
+takes `operator` (default `between`): `between` / `notBetween` take `min` and
+`max`, the rest take `value`. Optional: `allowBlank` (default true),
+`showDropdown` (lists, default true), `prompt: {title, text}`,
+`error: {style: "stop" | "warning" | "information", title, text}`. The written
+part is byte-identical to the PHP package's. The reader does not return
+validations yet.
+
 ### Excel and LibreOffice templates (.xltx, .ots)
 
 An `.xltx` is an `.xlsx` whose workbook part is declared a template; an `.ots`
