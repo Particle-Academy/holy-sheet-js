@@ -4,6 +4,7 @@ import type { CellFormat } from "../workbook/cell-format";
 import type { CellPrimitive } from "../schema/types";
 import { MergedRegion } from "../workbook/merged-region";
 import { Sheet, type PrintSetup } from "../workbook/sheet";
+import type { ReadLimits } from "./read-limits";
 import { renderSi } from "./shared-strings-parser";
 import { at, el, els, parseXml, type XmlNode } from "./xml";
 
@@ -15,9 +16,12 @@ export const WorksheetParser = {
     stylesIndex: (CellFormat | null)[],
     comments: Record<string, CellComment> = {},
     sharedStrings: string[] = [],
+    limits: ReadLimits | null = null,
   ): Sheet {
     const xml = parseXml(worksheetXml);
     if (!xml) return new Sheet(name);
+    // Counted from the parsed part before one Cell is built.
+    limits?.worksheet(xml);
 
     const cells = parseCells(xml, stylesIndex, comments, sharedStrings);
     const merges = parseMerges(xml);

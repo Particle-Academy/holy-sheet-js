@@ -25,7 +25,7 @@ is wrong, and the fix is to mirror PHP rather than to pick a third answer.
 ## The API
 
 `Agent` (in `src/agent.ts`) mirrors PHP's static `Agent`: `validate`,
-`validateAndRepair`, `toBytes`, `write`, `read`, `describe`, `lint`,
+`validateAndRepair`, `toBytes`, `write`, `read`, `describe`, `rows`, `lint`,
 `fromArray`, `fromCsv`, `diff`, `reduce`, `opSchema`, `equivalent`,
 `toolDefinition`, `guide`, `convertTemplate`, `version`. `HolySheet` wraps it as
 a class. Lower-level classes keep their PHP names (`Validator`, `Normalizer`,

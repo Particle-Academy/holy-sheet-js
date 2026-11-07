@@ -15,6 +15,29 @@ export interface CellFormatProps {
   borderLeft?: string | null;
   currency?: string | null;
   formatCode?: string | null;
+  /** A side's line style when it is not thin; null is thin. */
+  borderTopStyle?: string | null;
+  borderRightStyle?: string | null;
+  borderBottomStyle?: string | null;
+  borderLeftStyle?: string | null;
+}
+
+/** The line styles a border side can have. Mirrors PHP `CellFormat::BORDER_STYLES`. */
+export const BORDER_STYLES = ["thin", "medium", "thick", "dashed", "dotted", "double"] as const;
+
+/**
+ * One side from the schema: a bare colour (thin), or `{style?, color?}` (thin
+ * and black when omitted). Thin is carried as a null style, so a thin object
+ * and the bare colour it means are one format. Mirrors PHP `CellFormat::border`.
+ */
+export function borderSide(side: unknown): [string | null, string | null] {
+  if (typeof side === "string") return [side, null];
+  // PHP's `[]` is an empty map, so an empty array is `{}` here too.
+  if (side === null || typeof side !== "object" || (Array.isArray(side) && side.length > 0)) return [null, null];
+  const o = side as Record<string, unknown>;
+  const color = typeof o["color"] === "string" ? o["color"] : "#000000";
+  const style = o["style"] ?? "thin";
+  return [color, typeof style === "string" && style !== "thin" && (BORDER_STYLES as readonly string[]).includes(style) ? style : null];
 }
 
 /**
@@ -41,6 +64,10 @@ export class CellFormat {
    * foreign code; this port's reader does not yet).
    */
   readonly formatCode: string | null;
+  readonly borderTopStyle: string | null;
+  readonly borderRightStyle: string | null;
+  readonly borderBottomStyle: string | null;
+  readonly borderLeftStyle: string | null;
 
   constructor(p: CellFormatProps = {}) {
     this.bold = p.bold ?? false;
@@ -57,6 +84,10 @@ export class CellFormat {
     this.borderLeft = p.borderLeft ?? null;
     this.currency = p.currency ?? null;
     this.formatCode = p.formatCode ?? null;
+    this.borderTopStyle = p.borderTopStyle ?? null;
+    this.borderRightStyle = p.borderRightStyle ?? null;
+    this.borderBottomStyle = p.borderBottomStyle ?? null;
+    this.borderLeftStyle = p.borderLeftStyle ?? null;
   }
 
   /** Stable dedup key (JSON of ordered fields — replaces PHP md5(serialize)). */
@@ -76,6 +107,10 @@ export class CellFormat {
       this.borderLeft,
       this.currency,
       this.formatCode,
+      this.borderTopStyle,
+      this.borderRightStyle,
+      this.borderBottomStyle,
+      this.borderLeftStyle,
     ]);
   }
 
@@ -99,6 +134,10 @@ export class CellFormat {
   }
 
   static fromInput(a: CellFormatInput): CellFormat {
+    const [top, topStyle] = borderSide(a.borderTop ?? null);
+    const [right, rightStyle] = borderSide(a.borderRight ?? null);
+    const [bottom, bottomStyle] = borderSide(a.borderBottom ?? null);
+    const [left, leftStyle] = borderSide(a.borderLeft ?? null);
     return new CellFormat({
       bold: Boolean(a.bold ?? false),
       italic: Boolean(a.italic ?? false),
@@ -108,11 +147,15 @@ export class CellFormat {
       color: a.color ?? null,
       backgroundColor: a.backgroundColor ?? null,
       fontSize: a.fontSize != null ? Math.trunc(a.fontSize) : null,
-      borderTop: a.borderTop ?? null,
-      borderRight: a.borderRight ?? null,
-      borderBottom: a.borderBottom ?? null,
-      borderLeft: a.borderLeft ?? null,
+      borderTop: top,
+      borderRight: right,
+      borderBottom: bottom,
+      borderLeft: left,
       currency: a.currency ?? null,
+      borderTopStyle: topStyle,
+      borderRightStyle: rightStyle,
+      borderBottomStyle: bottomStyle,
+      borderLeftStyle: leftStyle,
     });
   }
 
@@ -135,6 +178,11 @@ export class CellFormat {
       currency: other.currency ?? this.currency,
       // A displayFormat set on top replaces a code beneath it (PHP).
       formatCode: other.displayFormat !== null ? other.formatCode : (other.formatCode ?? this.formatCode),
+      // A side's style travels with its colour: whichever side wins brings its own.
+      borderTopStyle: other.borderTop !== null ? other.borderTopStyle : this.borderTopStyle,
+      borderRightStyle: other.borderRight !== null ? other.borderRightStyle : this.borderRightStyle,
+      borderBottomStyle: other.borderBottom !== null ? other.borderBottomStyle : this.borderBottomStyle,
+      borderLeftStyle: other.borderLeft !== null ? other.borderLeftStyle : this.borderLeftStyle,
     });
   }
 }

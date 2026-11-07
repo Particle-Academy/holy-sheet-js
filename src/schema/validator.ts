@@ -2,6 +2,7 @@ import { SchemaException } from "../exceptions";
 import { isNumericString, isPlainObject, numericStringToNumber, typeOf } from "../util";
 import { DataValidations } from "./data-validations";
 import { CellAddress } from "../workbook/cell-address";
+import { BORDER_STYLES } from "../workbook/cell-format";
 import { ChartRange } from "../workbook/chart-range";
 import { ColumnWidths } from "./column-widths";
 import { CHART_TYPES } from "./normalizer";
@@ -184,6 +185,8 @@ export class Validator {
                   'This cell is an array, which usually means the row is nested one level too deep: `rows: [[["x"]]]` makes cell A1 an array, where `rows: [["x"]]` makes it "x". For a cell with formatting use the object form: {value: "x", format: {...}}.',
                 ),
               );
+            } else if (isPlainObject(cell) && isPlainObject(cell.format)) {
+              errors.push(...validateBorders(cell.format, `${path}.rows[${j}][${k}].format`));
             }
           });
         });
@@ -274,6 +277,14 @@ export class Validator {
             errors.push(error(`${path}.rowHeights.${row}`, "a non-negative number of pixels", typeOf(px), px,
               "A height is a number of pixels, like 28 (20 is a default row)."));
           }
+        }
+      }
+    }
+
+    if (isPlainObject(sheet.cells)) {
+      for (const [address, cell] of Object.entries(sheet.cells as Record<string, Any>)) {
+        if (isPlainObject(cell) && isPlainObject(cell.format)) {
+          errors.push(...validateBorders(cell.format, `${path}.cells.${address}.format`));
         }
       }
     }
@@ -502,6 +513,42 @@ function validateCharts(charts: unknown, path: string, sheetName: string): Valid
       }
     }
   });
+  return errors;
+}
+
+/**
+ * Each border side is a bare colour (a thin line, as it always was) or
+ * `{style?, color?}`. A bare string is not checked further. Mirrors PHP
+ * `Validator::validateBorders`, texts included.
+ */
+function validateBorders(format: Record<string, Any>, path: string): ValidationError[] {
+  const errors: ValidationError[] = [];
+  const styles = BORDER_STYLES.join(", ");
+  for (const side of ["borderTop", "borderRight", "borderBottom", "borderLeft"]) {
+    if (!Object.prototype.hasOwnProperty.call(format, side) || typeof format[side] === "string") continue;
+    const border = format[side];
+    // PHP's `[]` is an empty map, so an empty JS array is the empty object too.
+    const emptyList = Array.isArray(border) && border.length === 0;
+    if (!isPlainObject(border) && !emptyList) {
+      errors.push(error(`${path}.${side}`, 'a colour like "#000000", or {"style", "color"}', typeOf(border), border,
+        `A bare colour is a thin border: "#000000". For another line style use {"style": "dashed", "color": "#000000"}; styles: ${styles}.`));
+      continue;
+    }
+    for (const [key, value] of Object.entries(emptyList ? {} : (border as Record<string, unknown>))) {
+      if (key === "style") {
+        if (typeof value !== "string" || !(BORDER_STYLES as readonly string[]).includes(value)) {
+          errors.push(error(`${path}.${side}.style`, `one of: ${styles}`, typeOf(value), value,
+            `The line style of this side: ${styles}. Omit it for thin.`));
+        }
+      } else if (key === "color") {
+        if (typeof value !== "string" || !/^#[0-9A-Fa-f]{6}$/.test(value)) {
+          errors.push(error(`${path}.${side}.color`, "#RRGGBB", typeOf(value), value, 'A hex colour, like "#1F3A5F". Omit it for black.'));
+        }
+      } else {
+        errors.push(error(`${path}.${side}.${key}`, "style or color", "unknown key", value, 'A border side takes only "style" and "color".'));
+      }
+    }
+  }
   return errors;
 }
 

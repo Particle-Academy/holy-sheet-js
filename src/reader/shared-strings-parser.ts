@@ -1,11 +1,15 @@
+import type { ReadLimits } from "./read-limits";
 import { el, els, parseXml, type XmlNode } from "./xml";
 
 /** Parses xl/sharedStrings.xml → string[] by index. Mirrors PHP `SharedStringsParser`. */
 export const SharedStringsParser = {
-  parse(xml: string): string[] {
+  /** The table is counted before any entry is rendered (`maxSharedStrings`). */
+  parse(xml: string, limits: ReadLimits | null = null): string[] {
     const doc = parseXml(xml);
     if (!doc) return [];
-    return els(doc, "si").map(renderSi);
+    const items = els(doc, "si");
+    limits?.sharedStrings(items.length);
+    return items.map(renderSi);
   },
 };
 

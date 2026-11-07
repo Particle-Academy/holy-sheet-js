@@ -53,12 +53,68 @@ ceilings via `ArchiveLimits`. This input layer does not add lossless editing.
 - `lint(schema)` → formula problems `{sheet, address, formula, error, hint}[]`
 - `fromArray(rows, headers?, sheetName?, options?)` → schema
 - `fromCsv(csvOrPath, options?)` → schema
-- `read(bytes)` → schema (universal) and `describe(path)` → schema (Node only): the round-trip reader, for an `.xlsx` **or an `.ods`**
+- `read(bytes, { sheet?, limits? })` → schema (universal) and `describe(path, { sheet?, limits? })` → schema (Node only): the round-trip reader, for an `.xlsx` **or an `.ods`** (see [Reading](#reading-one-sheet-rows-and-read-limits))
+- `rows(sheet, { formulas?, maxCells? })` → a read sheet as rows of values
 - `toolDefinition()` → JSON Schema for LLM tool-use
 - `diff(a, b)` → the ops that turn one schema into another, `reduce(schema, opOrOps)` → a new schema, `opSchema()` → JSON Schema for one op, `equivalent(a, b)` → whether two schemas write the same workbook (see [Versions as diffs](#versions-as-diffs))
 - `version()` → string
 
 See `docs/` for the full schema reference.
+
+### Reading: one sheet, rows, and read limits
+
+```ts
+import { Agent, ReadLimitExceeded } from "@particle-academy/holy-sheet";
+
+// Only the sheet you name is parsed. Names match exactly; an unknown one
+// throws SheetNotFoundException, whose message lists every sheet.
+const schema = Agent.read(bytes, { sheet: "Contacts" });
+
+// The sheet as rows of values in column order. A blank row in the middle is
+// [], so rows[n - 1] is always row n; trailing blank rows are not padded.
+// A formula gives its cached computedValue; { formulas: "formula" } gives
+// "=SUM(B2:B9)". A merged region's value is at its top-left cell only.
+const rows = Agent.rows(schema.sheets[0]);
+```
+
+A read is bounded by what the file expands into, not only its bytes:
+`maxRows` (default 1,048,576, per sheet), `maxColumns` (16,384, per sheet),
+`maxCells` (20,000,000, the workbook) and `maxSharedStrings` (20,000,000).
+Each is checked before what it counts is built. Override any with a positive
+integer (`DEFAULT_READ_LIMITS` holds the defaults); anything else is
+`ArchiveRefused` with reason `read_limits`.
+
+```ts
+try {
+  Agent.read(bytes, { limits: { maxRows: 200000 } });
+} catch (e) {
+  if (e instanceof ReadLimitExceeded) {
+    // e.limit "maxRows", e.max 200000, e.actual 250001, and e.message for people:
+    // "Spreadsheet refused: a sheet has 250,001 rows, over the limit of 200,000 rows (maxRows) by 50,001."
+  }
+}
+```
+
+`ReadLimitExceeded` extends `ArchiveRefused` (reason `read_limit`). The archive
+limits above still apply first and are the tighter bound today: a worksheet part
+over 64 MiB is refused, which 10 mixed columns reach at about 120,000 rows. The
+PHP and Python packages take the same options and refuse with the same reasons
+and messages.
+
+### CSV
+
+`Csv.toCsv(table, { escapeFormulas?, display? })` writes one portable table
+(`{rows: [{cells: [{t, v, colSpan?, rowSpan?}]}]}`) as RFC 4180 CSV, byte for
+byte as PHP's `Exchange\Csv::toCsv()`, and returns `{text, report}`.
+Formula-injection escaping is on by default: a string or error field starting
+with `=`, `+`, `-`, `@`, TAB or CR gets a leading `'` and is reported
+`csv-escaped`. Turn it off only from host code, never from agent input.
+
+### Borders
+
+Each border side is a bare hex colour, which is a thin line, or
+`{ style, color }` with `style` one of `thin`, `medium`, `thick`, `dashed`,
+`dotted`, `double`: `format: { borderBottom: { style: "double", color: "#111827" } }`.
 
 ### Reading OpenDocument spreadsheets
 

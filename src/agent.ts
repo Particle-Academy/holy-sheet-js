@@ -18,6 +18,8 @@ import { SourceArchive } from "./zip/source-archive";
 import { convert as convertOfficeTemplate, type SourceKind } from "./zip/office-template";
 import { readFileBounded } from "./reader/file-input";
 import { OdsReader } from "./reader/ods-reader";
+import { ReadLimits, type ReadLimitOptions } from "./reader/read-limits";
+import { rowsView, type RowsOptions } from "./reader/rows-view";
 import { WorkbookSchema } from "./reader/workbook-schema";
 import { XlsxReader } from "./reader/xlsx-reader";
 import { XlsxWriter } from "./writer/xlsx-writer";
@@ -28,7 +30,7 @@ import type { SheetOp } from "./ops/types";
 import toolSchema from "./holy-sheet.schema.json";
 
 /** This package's own version, pinned to package.json by `version.test.ts`. */
-export const VERSION = "2.12.0";
+export const VERSION = "2.13.0";
 
 type Any = any;
 
@@ -36,9 +38,32 @@ function toU8(input: Uint8Array | ArrayBuffer): Uint8Array {
   return input instanceof Uint8Array ? input : new Uint8Array(input);
 }
 
-function readSpreadsheet(bytes: Uint8Array, path: string | null): Record<string, unknown> {
+/** `read()` / `describe()` options. Mirrors PHP `Agent::read($bytes, ['sheet' => ..., 'limits' => [...]])`. */
+export interface ReadOptions {
+  /** Read only the sheet of this exact name; the others are never parsed. */
+  sheet?: string;
+  /** Override any of DEFAULT_READ_LIMITS with a positive integer. */
+  limits?: ReadLimitOptions;
+}
+
+/** `sheet` and `limits`, checked before the file is opened. Mirrors PHP `Agent::readOptions`. */
+function readOptions(options: unknown): [string | null, ReadLimits] {
+  const o = (options ?? {}) as Record<string, unknown>;
+  for (const key of Object.keys(o)) {
+    if (key !== "sheet" && key !== "limits") throw new Error(`[holy-sheet] unknown read option: ${key}`);
+  }
+  const sheet = o["sheet"] ?? null;
+  if (sheet !== null && typeof sheet !== "string") {
+    throw new Error("[holy-sheet] read option sheet must be a sheet name (a string)");
+  }
+  return [sheet as string | null, ReadLimits.from(o["limits"] ?? {})];
+}
+
+function readSpreadsheet(bytes: Uint8Array, path: string | null, options: ReadOptions = {}): Record<string, unknown> {
+  const [sheet, limits] = readOptions(options);
   const { format, files } = FormatSniffer.sniff(bytes, path);
-  const workbook = format === "ods" ? new OdsReader().readFiles(files) : new XlsxReader().readFiles(files);
+  const workbook =
+    format === "ods" ? new OdsReader().readFiles(files, sheet, limits) : new XlsxReader().readFiles(files, sheet, limits);
   return WorkbookSchema.fromWorkbook(workbook);
 }
 
@@ -79,9 +104,25 @@ export const Agent = {
    * Round-trip xlsx or ods bytes back to a schema. Universal. The format is
    * told apart by content, never by name, and both describe to the same
    * schema. Throws `UnsupportedFormatException` for anything else.
+   *
+   * `options.sheet` reads only that sheet (exact name; an unknown one throws
+   * `SheetNotFoundException` listing them all). `options.limits` overrides the
+   * read limits; a read past one throws `ReadLimitExceeded` (an
+   * `ArchiveRefused`) with `limit`, `max`, `actual` and a message for people.
    */
-  read(input: Uint8Array | ArrayBuffer): Record<string, unknown> {
-    return readSpreadsheet(toU8(input), null);
+  read(input: Uint8Array | ArrayBuffer, options: ReadOptions = {}): Record<string, unknown> {
+    return readSpreadsheet(toU8(input), null, options);
+  },
+
+  /**
+   * A read sheet as rows of values in column order (row 1 and column A at
+   * index 0). A blank row in the middle is `[]`; trailing blank rows are not
+   * padded. A formula gives its cached `computedValue` unless
+   * `formulas: "formula"`; a merged region's value is at its top-left only.
+   * Mirrors PHP `Agent::rows()`.
+   */
+  rows(sheet: Record<string, unknown>, options: RowsOptions = {}): unknown[][] {
+    return rowsView(sheet, options);
   },
 
   /**
@@ -112,11 +153,12 @@ export const Agent = {
   },
 
   /** Round-trip an xlsx or ods file on disk back to a schema (Node only). */
-  async describe(path: string): Promise<Record<string, unknown>> {
+  async describe(path: string, options: ReadOptions = {}): Promise<Record<string, unknown>> {
+    readOptions(options);
     const fs = await import("node:fs");
     if (!fs.existsSync(path)) return { error: "not_found", path };
     const bytes = await readFileBounded(path);
-    return readSpreadsheet(bytes, path);
+    return readSpreadsheet(bytes, path, options);
   },
 
   /** Validate + conservative repairs in one call. */

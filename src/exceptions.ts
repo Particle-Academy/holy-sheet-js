@@ -9,6 +9,66 @@ export class ArchiveRefused extends Error {
   }
 }
 
+/** Which read limit was hit, as `ReadLimitExceeded.limit` names it. */
+export type ReadLimitName = "maxRows" | "maxColumns" | "maxCells" | "maxSharedStrings";
+
+const LIMIT_WORDS: Record<ReadLimitName, [string, string, string, string]> = {
+  maxRows: ["a sheet has", "row", "rows", ""],
+  maxColumns: ["a sheet has", "column", "columns", ""],
+  maxCells: ["the workbook has at least", "cell", "cells", "at least "],
+  maxSharedStrings: ["the workbook has", "shared string", "shared strings", ""],
+};
+
+/** 1234567 -> "1,234,567", as PHP's number_format() writes it, in any locale. */
+function grouped(n: number): string {
+  const digits = String(Math.abs(n));
+  const out = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return n < 0 ? "-" + out : out;
+}
+
+/**
+ * A read stopped because the spreadsheet is bigger than a read limit allows.
+ * Mirrors PHP `ReadLimitExceeded`: `reason` is `read_limit`, `limit` names
+ * which one, `max` is its value and `actual` what the file holds, and the
+ * message says so in plain words for people. Extends `ArchiveRefused`, so an
+ * existing catch for the archive guard still catches it.
+ */
+export class ReadLimitExceeded extends ArchiveRefused {
+  constructor(
+    public readonly limit: ReadLimitName,
+    public readonly max: number,
+    public readonly actual: number,
+    subject: string | null = null,
+  ) {
+    super("read_limit");
+    let [what, one, many, by] = LIMIT_WORDS[limit];
+    if (subject !== null) [what, by] = [subject, ""];
+    const unit = (n: number): string => (n === 1 ? one : many);
+    this.message =
+      `Spreadsheet refused: ${what} ${grouped(actual)} ${unit(actual)}, ` +
+      `over the limit of ${grouped(max)} ${unit(max)} (${limit}) by ${by}${grouped(actual - max)}.`;
+    this.name = "ReadLimitExceeded";
+    Object.setPrototypeOf(this, ReadLimitExceeded.prototype);
+  }
+}
+
+/**
+ * `read(bytes, { sheet })` named a sheet the workbook does not have. Names
+ * match exactly; the message lists every one. Mirrors PHP
+ * `SheetNotFoundException`.
+ */
+export class SheetNotFoundException extends Error {
+  constructor(
+    public readonly sheet: string,
+    public readonly available: string[],
+  ) {
+    const quote = (s: string): string => `"${s}"`;
+    super(`[holy-sheet] no sheet named ${quote(sheet)}; this workbook has: ${available.map(quote).join(", ")}`);
+    this.name = "SheetNotFoundException";
+    Object.setPrototypeOf(this, SheetNotFoundException.prototype);
+  }
+}
+
 const TEMPLATE_MESSAGES: Record<string, string> = {
   macro_enabled: "Macro-enabled templates (.xltm) are refused: re-save it as an .xltx in Excel.",
   family_mismatch: "This package declares a template of a different kind than its contents.",

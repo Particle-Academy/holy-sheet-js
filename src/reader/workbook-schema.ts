@@ -131,10 +131,16 @@ function formatToObject(f: CellFormat): Record<string, unknown> {
   if (f.color !== null) out["color"] = f.color;
   if (f.backgroundColor !== null) out["backgroundColor"] = f.backgroundColor;
   if (f.fontSize !== null) out["fontSize"] = f.fontSize;
-  if (f.borderTop !== null) out["borderTop"] = f.borderTop;
-  if (f.borderRight !== null) out["borderRight"] = f.borderRight;
-  if (f.borderBottom !== null) out["borderBottom"] = f.borderBottom;
-  if (f.borderLeft !== null) out["borderLeft"] = f.borderLeft;
+  // A thin side reads back as the bare colour it always did; another style as {style, color}.
+  const sides = [
+    ["borderTop", f.borderTop, f.borderTopStyle],
+    ["borderRight", f.borderRight, f.borderRightStyle],
+    ["borderBottom", f.borderBottom, f.borderBottomStyle],
+    ["borderLeft", f.borderLeft, f.borderLeftStyle],
+  ] as const;
+  for (const [key, color, style] of sides) {
+    if (color !== null) out[key] = style === null ? color : { style, color };
+  }
   if (f.currency !== null) out["currency"] = f.currency;
   return out;
 }

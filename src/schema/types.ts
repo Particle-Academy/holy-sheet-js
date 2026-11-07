@@ -45,12 +45,18 @@ export interface CellFormatInput {
   color?: string;
   backgroundColor?: string;
   fontSize?: number;
-  borderTop?: string | null;
-  borderRight?: string | null;
-  borderBottom?: string | null;
-  borderLeft?: string | null;
+  borderTop?: BorderInput | null;
+  borderRight?: BorderInput | null;
+  borderBottom?: BorderInput | null;
+  borderLeft?: BorderInput | null;
   currency?: string;
 }
+
+/** A border line style. `thin` is the default, and a bare colour means it. */
+export type BorderStyle = "thin" | "medium" | "thick" | "dashed" | "dotted" | "double";
+
+/** One border side: a bare hex colour (a thin line), or a style and colour (thin and black when omitted). */
+export type BorderInput = string | { style?: BorderStyle; color?: string };
 
 export interface CommentInput {
   text: string;

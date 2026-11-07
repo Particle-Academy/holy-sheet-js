@@ -4,7 +4,9 @@ import { ChartParser } from "./chart-parser";
 import { Workbook } from "../workbook/workbook";
 import { unzipSync } from "../zip";
 import { filesView, sourceKind } from "../zip/office-template";
+import { SheetNotFoundException } from "../exceptions";
 import { CommentsParser } from "./comments-parser";
+import { ReadLimits } from "./read-limits";
 import { RelsParser } from "./rels-parser";
 import { SharedStringsParser } from "./shared-strings-parser";
 import { StylesParser } from "./styles-parser";
@@ -23,8 +25,14 @@ export class XlsxReader {
     return this.readFiles(unzipSync(bytes));
   }
 
-  /** Read an already-unzipped package (name -> bytes), so a caller that sniffed it does not unzip twice. */
-  readFiles(files: Record<string, Uint8Array>): Workbook {
+  /**
+   * Read an already-unzipped package (name -> bytes), so a caller that sniffed
+   * it does not unzip twice. `only` reads just the sheet of that exact name
+   * (the others are never parsed); an unknown name throws
+   * SheetNotFoundException. Mirrors PHP `XlsxReader::readArchive`.
+   */
+  readFiles(files: Record<string, Uint8Array>, only: string | null = null, limits: ReadLimits | null = null): Workbook {
+    limits ??= ReadLimits.from();
     const kind = sourceKind(filesView(files));
     const getText = (name: string): string | null => (files[name] ? decodePart(files[name]) : null);
 
@@ -32,7 +40,7 @@ export class XlsxReader {
     const stylesIndex = stylesXml ? StylesParser.parse(stylesXml) : [];
 
     const sharedStringsXml = getText("xl/sharedStrings.xml");
-    const sharedStrings = sharedStringsXml ? SharedStringsParser.parse(sharedStringsXml) : [];
+    const sharedStrings = sharedStringsXml ? SharedStringsParser.parse(sharedStringsXml, limits) : [];
 
     const workbookXml = getText("xl/workbook.xml");
     if (workbookXml === null) throw new Error("[holy-sheet] missing xl/workbook.xml");
@@ -45,10 +53,22 @@ export class XlsxReader {
     // The 1904 date system: `<workbookPr date1904="1"/>` (or "true").
     const date1904 = ["1", "true"].includes(at(el(workbookDoc, "workbookPr"), "date1904") ?? "");
 
+    if (only !== null) {
+      const names = els(el(workbookDoc, "sheets"), "sheet").map((s) => at(s, "name") ?? "");
+      if (!names.includes(only)) throw new SheetNotFoundException(only, names);
+    }
+
     const sheets: Sheet[] = [];
     let i = 0;
     for (const sheetEl of els(el(workbookDoc, "sheets"), "sheet")) {
       const name = at(sheetEl, "name") ?? "";
+      if (only !== null && name !== only) {
+        // The sheet rels part is named by the position among READ sheets, so a
+        // skipped sheet advances it exactly when a full read would have.
+        const skipped = workbookRels[at(sheetEl, "id") ?? ""]?.Target;
+        if (skipped != null && files["xl/" + skipped.replace(/^\//, "")]) i++;
+        continue;
+      }
       const rId = at(sheetEl, "id") ?? ""; // r:id → local "id"
       const target = workbookRels[rId]?.Target;
       if (target == null) continue;
@@ -69,7 +89,7 @@ export class XlsxReader {
         }
       }
 
-      let sheet = WorksheetParser.parse(worksheetXml, name, stylesIndex, comments, sharedStrings);
+      let sheet = WorksheetParser.parse(worksheetXml, name, stylesIndex, comments, sharedStrings, limits);
 
       // Charts: sheet rels -> drawing -> drawing rels -> chart parts (see PHP).
       if (sheetRelsXml) {

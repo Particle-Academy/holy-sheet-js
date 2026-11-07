@@ -11,6 +11,8 @@ import { NS, asciiLower, attr, child, phpInt, phpIsNumeric, phpTrim } from "./od
 import { odsFormulaToA1 } from "./ods/ods-formula";
 import { OdsStyles } from "./ods/ods-styles";
 import { paragraphs } from "./ods/ods-text";
+import { SheetNotFoundException } from "../exceptions";
+import { ReadLimits } from "./read-limits";
 import { WorkbookSchema } from "./workbook-schema";
 import { decodePart, parseXml, type XmlNode } from "./xml";
 
@@ -56,8 +58,15 @@ export class OdsReader {
     return this.readFiles(unzipSync(bytes));
   }
 
-  /** Read an already-unzipped package (name -> bytes). */
-  readFiles(files: Record<string, Uint8Array>): Workbook {
+  /** The running read limits for this read; set by readFiles(). */
+  private limits: ReadLimits | null = null;
+
+  /**
+   * Read an already-unzipped package (name -> bytes). `only` reads just the
+   * table of that name; an unknown name throws SheetNotFoundException.
+   */
+  readFiles(files: Record<string, Uint8Array>, only: string | null = null, limits: ReadLimits | null = null): Workbook {
+    this.limits = limits ?? ReadLimits.from();
     const kind = sourceKind(filesView(files));
     const getText = (name: string): string | null => (files[name] ? decodePart(files[name]) : null);
 
@@ -72,8 +81,14 @@ export class OdsReader {
 
     const sheets: Sheet[] = [];
     const spreadsheet = child(child(contentDoc, NS.OFFICE, "body"), NS.OFFICE, "spreadsheet");
-    for (const table of spreadsheet?.children ?? []) {
-      if (table.ns === NS.TABLE && table.name === "table") sheets.push(this.readSheet(table, styles));
+    const tables = (spreadsheet?.children ?? []).filter((t) => t.ns === NS.TABLE && t.name === "table");
+    if (only !== null) {
+      const names = tables.map((t) => attr(t, NS.TABLE, "name") ?? "");
+      if (!names.includes(only)) throw new SheetNotFoundException(only, names);
+    }
+    for (const table of tables) {
+      if (only !== null && (attr(table, NS.TABLE, "name") ?? "") !== only) continue;
+      sheets.push(this.readSheet(table, styles));
     }
 
     const meta = getText("meta.xml");
@@ -138,6 +153,19 @@ export class OdsReader {
     if (entries.length === 0) {
       state.row += repeat;
       return;
+    }
+
+    // The whole repeat block is counted before any of it is expanded: one cell
+    // repeated across a sheet is billions of cells from one element.
+    if (this.limits !== null) {
+      const rowsHere = Math.min(repeat, MAX_ROWS - state.row);
+      let values = 0;
+      let width = 0;
+      for (const [col, read] of entries) {
+        width = Math.max(width, col + 1);
+        if (read !== null) values++;
+      }
+      this.limits.sheet(state.row + rowsHere, width, values * rowsHere);
     }
 
     for (let r = 0; r < repeat && state.row < MAX_ROWS; r++) {

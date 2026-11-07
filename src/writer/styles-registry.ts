@@ -21,6 +21,8 @@ interface BorderRec {
   right: string | null;
   bottom: string | null;
   left: string | null;
+  /** Non-thin line styles by side; absent or null is thin. */
+  styles?: Partial<Record<"top" | "right" | "bottom" | "left", string | null>>;
 }
 
 /**
@@ -103,6 +105,7 @@ export class StylesRegistry {
       right: f.borderRight,
       bottom: f.borderBottom,
       left: f.borderLeft,
+      styles: { top: f.borderTopStyle, right: f.borderRightStyle, bottom: f.borderBottomStyle, left: f.borderLeftStyle },
     };
     const key = JSON.stringify(rec);
     const existing = this.borderIndex.get(key);
@@ -171,7 +174,7 @@ export class StylesRegistry {
         if (!color) {
           bordersXml += `<${side}/>`;
         } else {
-          bordersXml += `<${side} style="thin"><color rgb="${hexToArgb(color)}"/></${side}>`;
+          bordersXml += `<${side} style="${b.styles?.[side] ?? "thin"}"><color rgb="${hexToArgb(color)}"/></${side}>`;
         }
       }
       bordersXml += "<diagonal/></border>";

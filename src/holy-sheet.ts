@@ -1,4 +1,5 @@
-import { Agent, VERSION } from "./agent";
+import { Agent, VERSION, type ReadOptions } from "./agent";
+import type { RowsOptions } from "./reader/rows-view";
 import type {
   BuilderOptions,
   FormulaProblem,
@@ -29,11 +30,15 @@ export class HolySheet {
   toolDefinition(): Record<string, unknown> {
     return Agent.toolDefinition();
   }
-  read(input: Uint8Array | ArrayBuffer): Record<string, unknown> {
-    return Agent.read(input);
+  read(input: Uint8Array | ArrayBuffer, options: ReadOptions = {}): Record<string, unknown> {
+    return Agent.read(input, options);
   }
-  describe(path: string): Promise<Record<string, unknown>> {
-    return Agent.describe(path);
+  describe(path: string, options: ReadOptions = {}): Promise<Record<string, unknown>> {
+    return Agent.describe(path, options);
+  }
+  /** {@link Agent.rows}: a read sheet as rows of values. */
+  rows(sheet: Record<string, unknown>, options: RowsOptions = {}): unknown[][] {
+    return Agent.rows(sheet, options);
   }
   /** {@link Agent.convertTemplate}: .xltx/.ots to .xlsx/.ods and back. */
   convertTemplate(input: Uint8Array | ArrayBuffer, to: "document" | "template" | null = null): Uint8Array {

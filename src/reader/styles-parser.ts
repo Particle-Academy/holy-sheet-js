@@ -1,4 +1,4 @@
-import { CellFormat } from "../workbook/cell-format";
+import { BORDER_STYLES, CellFormat } from "../workbook/cell-format";
 import { NumFmtParser, type NumFmtParsed } from "./format/num-fmt-parser";
 import { at, el, els, parseXml, type XmlNode } from "./xml";
 
@@ -13,6 +13,7 @@ interface BorderRec {
   right: string | null;
   bottom: string | null;
   left: string | null;
+  styles: Partial<Record<"top" | "right" | "bottom" | "left", string | null>>;
 }
 
 /** Parses xl/styles.xml → (CellFormat | null)[] by xf id. Mirrors PHP `StylesParser`. */
@@ -88,12 +89,15 @@ function parseFills(xml: XmlNode): (string | null)[] {
 
 function parseBorders(xml: XmlNode): BorderRec[] {
   return els(el(xml, "borders"), "border").map((b) => {
-    const rec: BorderRec = { top: null, right: null, bottom: null, left: null };
+    const rec: BorderRec = { top: null, right: null, bottom: null, left: null, styles: {} };
     for (const side of ["top", "right", "bottom", "left"] as const) {
       const sideEl = el(b, side);
       const color = el(sideEl, "color");
       if (sideEl && at(sideEl, "style") !== undefined && at(sideEl, "style") !== "" && color && at(color, "rgb") !== undefined) {
         rec[side] = argbToHex(at(color, "rgb")!);
+        // One of the styles the writer has; any other Excel style reads as thin, as it always did.
+        const style = at(sideEl, "style")!;
+        rec.styles[side] = style !== "thin" && (BORDER_STYLES as readonly string[]).includes(style) ? style : null;
       }
     }
     return rec;
@@ -121,6 +125,10 @@ function buildCellFormat(
     borderBottom: border?.bottom ?? null,
     borderLeft: border?.left ?? null,
     currency: numFmt?.currency ?? null,
+    borderTopStyle: border?.styles.top ?? null,
+    borderRightStyle: border?.styles.right ?? null,
+    borderBottomStyle: border?.styles.bottom ?? null,
+    borderLeftStyle: border?.styles.left ?? null,
   });
 }
 
