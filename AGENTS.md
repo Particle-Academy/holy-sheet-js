@@ -79,11 +79,28 @@ coverage. So:
 spreadsheet part never legitimately carries one, and the hand-written parser
 stops at any declaration rather than trying to skip it. Parts reach it through
 `decodePart`, so the check reads what the part says in whatever encoding it uses.
-A refusal looks like malformed XML, so each caller keeps its handling of a part it
-cannot read. The exception is `[Content_Types].xml`, whose declarations decide
-which other refusals apply: a refusal there refuses the package with
-`UnsupportedFormatException`. A test fails if `src/` decodes a part or looks for a
+**`parseXml` throws `UnsupportedFormatException`** (`refusedPart()`) for a
+`<!DOCTYPE` before the root, from any part; until 2.11.5 it returned null, so a
+worksheet with one read as an EMPTY sheet. Any other declaration (one inside the
+root, an `<!ELEMENT` with no DOCTYPE) is still refused but reads as null, because
+PHP's libxml and Python's expat call those malformed, and parity is on what each
+engine raises. Malformed XML and an undecodable part still read as absent.
+`[Content_Types].xml` is checked first with `partIsRefused`, which refuses any
+declaration or undecodable encoding, and that refuses the package
+(`refusedDeclaration()`). A test fails if `src/` decodes a part or looks for a
 DOCTYPE anywhere else. `tests/doctype-refusal.test.ts` holds the cases.
+
+**Dates follow the workbook's date system.** `<workbookPr date1904="1"/>` (or
+`"true"`) moves the epoch to 1904-01-01; `Workbook.date1904` carries it to
+`WorkbookSchema`, which converts a date-formatted cell's value AND its formula's
+cached value to ISO. The writer always writes the 1900 system, and the
+normalizer's `coerceCached` turns an ISO `computedValue` back into a serial.
+
+**A column's `format` code is `CellFormat.formatCode` with no displayFormat**,
+written verbatim by `StylesRegistry` (PHP's `formatCode`). The column type still
+coerces the value through the type-derived format kept beside it. This port's
+reader does not yet keep a foreign code from a file, and `fromInput` does not read
+a cell-level `formatCode`; PHP does both.
 
 **Numbers follow PHP, not JavaScript.** `src/util.ts` holds the PHP-semantics
 helpers (`isNumericString`, numeric-string coercion). `parseInt` / `parseFloat`

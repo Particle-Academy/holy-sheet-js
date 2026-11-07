@@ -24,8 +24,12 @@
  * here is that it refuses what the other engines refuse and takes no content
  * from inside a subset. Decode through `decodePart`, so the check sees what the
  * part actually says whatever encoding it uses. A test fails if `src/` decodes a
- * part or looks for a DOCTYPE anywhere else.
+ * part or looks for a DOCTYPE anywhere else. `parseXml` THROWS
+ * `UnsupportedFormatException` for a DOCTYPE before the root, as PHP and Python
+ * do; malformed XML still reads as null.
  */
+
+import { UnsupportedFormatException } from "../exceptions";
 
 export interface XmlNode {
   name: string;
@@ -156,11 +160,24 @@ export function partIsRefused(bytes: Uint8Array): boolean {
   return text === null || walk(text).refused;
 }
 
+/**
+ * The part's root, or null when it is empty or malformed.
+ *
+ * @throws UnsupportedFormatException when a DOCTYPE comes before the root. Read
+ *   as an absent part, a worksheet carrying one came back as an EMPTY sheet
+ *   (PHP 2.11.5 raises too). Any other declaration is still refused, and still
+ *   reads as absent, because PHP's libxml and Python's expat call it malformed.
+ */
 export function parseXml(src: string, options: ParseXmlOptions = {}): XmlNode | null {
-  return walk(src, options).root;
+  const walked = walk(src, options);
+  if (walked.doctype) throw UnsupportedFormatException.refusedPart();
+  return walked.root;
 }
 
-function walk(src: string, options: ParseXmlOptions = {}): { root: XmlNode | null; refused: boolean } {
+function walk(
+  src: string,
+  options: ParseXmlOptions = {},
+): { root: XmlNode | null; refused: boolean; doctype?: boolean } {
   const namespaces = options.namespaces === true;
   let i = 0;
   const n = src.length;
@@ -195,7 +212,12 @@ function walk(src: string, options: ParseXmlOptions = {}): { root: XmlNode | nul
       }
       // A declaration: a DOCTYPE, or nothing a part may hold. Refused here rather
       // than skipped, because its end cannot be found without parsing its subset.
-      if (src.startsWith("<!", i)) return { root: null, refused: true };
+      // `doctype` marks the case the other engines raise on: a DOCTYPE in the
+      // prolog, before any element.
+      if (src.startsWith("<!", i)) {
+        const doctype = root.children.length === 0 && src.slice(i, i + 9).toLowerCase() === "<!doctype";
+        return { root: null, refused: true, doctype };
+      }
       if (src[i + 1] === "/") {
         const end = src.indexOf(">", i);
         if (stack.length > 1) {

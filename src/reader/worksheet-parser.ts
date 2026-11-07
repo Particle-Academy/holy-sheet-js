@@ -4,6 +4,7 @@ import type { CellFormat } from "../workbook/cell-format";
 import type { CellPrimitive } from "../schema/types";
 import { MergedRegion } from "../workbook/merged-region";
 import { Sheet, type PrintSetup } from "../workbook/sheet";
+import { renderSi } from "./shared-strings-parser";
 import { at, el, els, parseXml, type XmlNode } from "./xml";
 
 /** Parses one xl/worksheets/sheetN.xml → Sheet. Mirrors PHP `WorksheetParser`. */
@@ -120,8 +121,10 @@ function parseCells(
       if (f) {
         formula = f.text;
         cachedValue = v ? coerceValue(v.text, type) : null;
-      } else if (type === "inlineStr" && el(c, "is") && el(el(c, "is"), "t")) {
-        value = el(el(c, "is"), "t")!.text;
+      } else if (type === "inlineStr" && el(c, "is") && (el(el(c, "is"), "t") || el(el(c, "is"), "r"))) {
+        // A rich inline string holds runs, not one <t>; it read as null until
+        // the runs were joined as a shared string's are (PHP 2.11.5).
+        value = renderSi(el(c, "is")!);
       } else if (type === "s" && v) {
         const idx = parseInt(v.text, 10);
         value = sharedStrings[idx] ?? "";

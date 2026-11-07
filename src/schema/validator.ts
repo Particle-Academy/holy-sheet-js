@@ -356,6 +356,24 @@ export class Validator {
       );
     }
 
+    // A format code the writer cannot emit used to vanish with the field (PHP
+    // 2.11.5): a non-empty string of at most 255 bytes. `in`, as PHP tests
+    // array_key_exists, so a null is reported too.
+    if ("format" in col) {
+      const code = col.format;
+      if (typeof code !== "string" || code === "" || new TextEncoder().encode(code).length > 255) {
+        errors.push(
+          error(
+            `${path}.format`,
+            "a non-empty number-format code of at most 255 bytes",
+            typeOf(code),
+            code,
+            'A custom Excel number-format code applied to every cell in the column, like "0.000" or "dd/mm/yyyy". It overrides the format the column type would give.',
+          ),
+        );
+      }
+    }
+
     return errors;
   }
 }

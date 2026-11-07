@@ -114,7 +114,12 @@ export class StylesRegistry {
   }
 
   private numFmtFor(f: CellFormat): number {
-    const code = NumFmtBuilder.build(f);
+    let code = NumFmtBuilder.build(f);
+    // A raw code goes out verbatim when nothing more specific was asked for.
+    // It is escaped in toXml() like any code. Mirrors PHP numFmtFor.
+    if (code === null && f.displayFormat === null && f.formatCode !== null && f.formatCode !== "") {
+      code = f.formatCode;
+    }
     if (code === null) return 0;
     const existing = this.numFmtIndex.get(code);
     if (existing !== undefined) return existing;

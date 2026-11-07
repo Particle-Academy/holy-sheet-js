@@ -46,9 +46,14 @@ export class Normalizer {
     let headerOffset = 0;
 
     const columnFormats = new Map<number, CellFormat | null>();
+    // The type-derived format, kept only for a column whose `format` code
+    // replaced it: the code decides how a cell LOOKS, the type still decides
+    // what its value is (a date column's strings become serials). PHP 2.11.5.
+    const columnCoercions = new Map<number, CellFormat | null>();
     const columnByHeader = new Map<string, number>();
     columns.forEach((columnDef, colIdx) => {
       columnFormats.set(colIdx, this.columnFormat(columnDef));
+      columnCoercions.set(colIdx, columnCode(columnDef) !== null ? this.columnTypeFormat(columnDef) : null);
       if (isPlainObject(columnDef) && columnDef.header !== undefined) {
         columnByHeader.set(String(columnDef.header), colIdx);
       }
@@ -70,7 +75,7 @@ export class Normalizer {
         const rowBand = theme.dataFormat(r);
         const merged =
           rowBand !== null ? (columnFormat ? columnFormat.mergeWith(rowBand) : rowBand) : columnFormat;
-        cells.set(address, this.buildCell(address, value, merged, name));
+        cells.set(address, this.buildCell(address, value, merged, name, columnCoercions.get(c) ?? null));
       });
     });
 
@@ -181,7 +186,7 @@ export class Normalizer {
           cellData?.formula ?? null,
           format,
           comment,
-          cellData?.computedValue ?? null,
+          coerceCached(cellData?.computedValue ?? null, format),
         ),
       );
     }
@@ -250,7 +255,19 @@ export class Normalizer {
     return out;
   }
 
+  /**
+   * The format every cell in a column starts from. A `format` code replaces the
+   * type-derived one, as the schema documents ("Overrides type-derived
+   * format"); it is carried as `formatCode` with no displayFormat, which the
+   * writer emits as a custom numFmt verbatim. Until 2026-11-07 the field was
+   * advertised and ignored. Mirrors PHP.
+   */
   private columnFormat(columnDef: Any): CellFormat | null {
+    const code = columnCode(columnDef);
+    return code !== null ? new CellFormat({ formatCode: code }) : this.columnTypeFormat(columnDef);
+  }
+
+  private columnTypeFormat(columnDef: Any): CellFormat | null {
     if (typeof columnDef === "string") return null;
     const type = columnDef.type ?? "auto";
     const decimals = columnDef.decimals != null ? toInt(columnDef.decimals) : null;
@@ -279,10 +296,13 @@ export class Normalizer {
     value: Any,
     columnFormat: CellFormat | null,
     sheetName?: string,
+    /** The column's type-derived format when a `format` code replaced it on the cell. */
+    coerceAs: CellFormat | null = null,
   ): Cell {
     if (isCellSpec(value)) {
       const cellFormat = isPlainObject(value.format) ? CellFormat.fromInput(value.format) : null;
       const merged = columnFormat ? columnFormat.mergeWith(cellFormat) : cellFormat;
+      const coerceFormat = coerceAs !== null ? coerceAs.mergeWith(cellFormat) : merged;
       const comment = isPlainObject(value.comment)
         ? new CellComment(
             String(value.comment.text ?? ""),
@@ -293,11 +313,11 @@ export class Normalizer {
       const rawValue = value.value ?? null;
       return new Cell(
         address,
-        this.coerceValue(rawValue, merged, address, sheetName, true),
+        this.coerceValue(rawValue, coerceFormat, address, sheetName, true),
         value.formula ?? null,
         merged,
         comment,
-        value.computedValue ?? null,
+        coerceCached(value.computedValue ?? null, coerceFormat),
       );
     }
 
@@ -305,7 +325,7 @@ export class Normalizer {
 
     return new Cell(
       address,
-      formula !== null ? null : this.coerceValue(bare, columnFormat, address, sheetName),
+      formula !== null ? null : this.coerceValue(bare, coerceAs ?? columnFormat, address, sheetName),
       formula,
       columnFormat,
     );
@@ -469,6 +489,31 @@ function promoteFormula(value: Any): [Any, string | null] {
 function toInt(v: unknown): number {
   const n = Math.trunc(Number(v));
   return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * A column's `format` code, when it is one the writer can emit: a non-empty
+ * string of at most 255 bytes, the bound the Validator holds it to. Mirrors PHP
+ * `Normalizer::columnCode`.
+ */
+export function columnCode(columnDef: Any): string | null {
+  const code = isPlainObject(columnDef) ? columnDef.format : undefined;
+  return typeof code === "string" && code !== "" && new TextEncoder().encode(code).length <= 255 ? code : null;
+}
+
+/**
+ * A formula's cached value, under the cell's format. describe() reads the cached
+ * value of a date-formatted formula as the ISO date it displays, so writing that
+ * output back must turn it into the serial again: as text, `<v>2026-11-08</v>`
+ * is no number at all in a numeric cell. The conversion `coerceValue` gives a
+ * date cell's own value. Mirrors PHP `Normalizer::coerceCached`.
+ */
+function coerceCached(cached: Any, format: CellFormat | null): CellPrimitive {
+  const df = format?.displayFormat;
+  if ((df === "date" || df === "datetime") && (cached instanceof Date || (typeof cached === "string" && cached.trim() !== ""))) {
+    return DateConverter.toSerial(cached, df === "datetime");
+  }
+  return cached as CellPrimitive;
 }
 
 /** A series' coloured points, by index. Mirrors PHP Normalizer::normalizePoints. */

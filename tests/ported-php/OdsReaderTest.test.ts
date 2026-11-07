@@ -268,9 +268,11 @@ describe("ods reader (ported PHP OdsReaderTest)", () => {
         ) as Any
       ).sheets[0].cells;
 
-      same(cells.A1, { value: null, formula: "DATE(2024,3,15)", computedValue: 45366, format: { displayFormat: "date" } });
-      same(cells.B1, { value: null, formula: "A1+0.5", computedValue: 45366.5, format: { displayFormat: "datetime" } });
-      same(cells.C1, { value: null, formula: "TIME(6,0,0)", computedValue: 0.25, format: { displayFormat: "datetime" } });
+      // The date result is cached as its serial, then describes as the ISO date
+      // it shows, like a date-formatted xlsx formula (PHP 2.11.5).
+      same(cells.A1, { value: null, formula: "DATE(2024,3,15)", computedValue: "2024-03-15", format: { displayFormat: "date" } });
+      same(cells.B1, { value: null, formula: "A1+0.5", computedValue: "2024-03-15T12:00:00Z", format: { displayFormat: "datetime" } });
+      same(cells.C1, { value: null, formula: "TIME(6,0,0)", computedValue: "1899-12-30T06:00:00Z", format: { displayFormat: "datetime" } });
       same(cells.D1, { value: null, formula: "1=1", computedValue: true });
       same(cells.E1, { value: null, formula: '"a"', computedValue: "a" });
     });

@@ -14,6 +14,7 @@ export interface CellFormatProps {
   borderBottom?: string | null;
   borderLeft?: string | null;
   currency?: string | null;
+  formatCode?: string | null;
 }
 
 /**
@@ -34,6 +35,12 @@ export class CellFormat {
   readonly borderBottom: string | null;
   readonly borderLeft: string | null;
   readonly currency: string | null;
+  /**
+   * A number-format code no displayFormat describes, written verbatim. Set by a
+   * column's `format` (PHP's `formatCode`, which PHP's reader also fills from a
+   * foreign code; this port's reader does not yet).
+   */
+  readonly formatCode: string | null;
 
   constructor(p: CellFormatProps = {}) {
     this.bold = p.bold ?? false;
@@ -49,6 +56,7 @@ export class CellFormat {
     this.borderBottom = p.borderBottom ?? null;
     this.borderLeft = p.borderLeft ?? null;
     this.currency = p.currency ?? null;
+    this.formatCode = p.formatCode ?? null;
   }
 
   /** Stable dedup key (JSON of ordered fields — replaces PHP md5(serialize)). */
@@ -67,6 +75,7 @@ export class CellFormat {
       this.borderBottom,
       this.borderLeft,
       this.currency,
+      this.formatCode,
     ]);
   }
 
@@ -84,7 +93,8 @@ export class CellFormat {
       this.borderRight === null &&
       this.borderBottom === null &&
       this.borderLeft === null &&
-      this.currency === null
+      this.currency === null &&
+      this.formatCode === null
     );
   }
 
@@ -123,6 +133,8 @@ export class CellFormat {
       borderBottom: other.borderBottom ?? this.borderBottom,
       borderLeft: other.borderLeft ?? this.borderLeft,
       currency: other.currency ?? this.currency,
+      // A displayFormat set on top replaces a code beneath it (PHP).
+      formatCode: other.displayFormat !== null ? other.formatCode : (other.formatCode ?? this.formatCode),
     });
   }
 }

@@ -108,6 +108,18 @@ export class UnsupportedFormatException extends Error {
     );
   }
 
+  /**
+   * A part other than the declaration carries a DOCTYPE. It used to read as an
+   * absent part, so a worksheet with one came back as an empty sheet. Mirrors
+   * PHP `UnsupportedFormatException::refusedPart`.
+   */
+  static refusedPart(path: string | null = null): UnsupportedFormatException {
+    return new UnsupportedFormatException(
+      `[holy-sheet] cannot read ${path ?? "this file"}: one of its XML parts carries a DOCTYPE, which no spreadsheet part has`,
+      path,
+    );
+  }
+
   static unknownPackage(path: string | null, mimetype: string | null): UnsupportedFormatException {
     const what =
       mimetype !== null && mimetype !== ""

@@ -42,6 +42,8 @@ export class XlsxReader {
 
     const workbookDoc = parseXml(workbookXml);
     if (!workbookDoc) throw new Error("[holy-sheet] failed to parse xl/workbook.xml");
+    // The 1904 date system: `<workbookPr date1904="1"/>` (or "true").
+    const date1904 = ["1", "true"].includes(at(el(workbookDoc, "workbookPr"), "date1904") ?? "");
 
     const sheets: Sheet[] = [];
     let i = 0;
@@ -94,7 +96,7 @@ export class XlsxReader {
     }
 
     const meta = this.parseDocProps(getText("docProps/core.xml"));
-    return new Workbook(sheets, meta, kind);
+    return new Workbook(sheets, meta, kind, date1904);
   }
 
   private parseDocProps(coreXml: string | null): Record<string, unknown> {

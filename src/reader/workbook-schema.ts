@@ -17,7 +17,9 @@ import { DateInverter } from "./format/date-inverter";
  */
 export const WorkbookSchema = {
   fromWorkbook(workbook: Workbook): Record<string, unknown> {
-    const schema: Record<string, unknown> = { sheets: workbook.sheets.map(sheetToSchema) };
+    const schema: Record<string, unknown> = {
+      sheets: workbook.sheets.map((sheet) => sheetToSchema(sheet, workbook.date1904)),
+    };
     if (Object.keys(workbook.meta).length > 0) schema["meta"] = workbook.meta;
     // Only templates say so; a document read is unchanged.
     if (workbook.sourceKind === "template") schema["sourceKind"] = "template";
@@ -25,10 +27,10 @@ export const WorkbookSchema = {
   },
 };
 
-function sheetToSchema(sheet: Sheet): Record<string, unknown> {
+function sheetToSchema(sheet: Sheet, date1904 = false): Record<string, unknown> {
   const cells: Record<string, unknown> = {};
   for (const [address, cell] of sheet.cells) {
-    const cellSchema = cellToSchema(cell);
+    const cellSchema = cellToSchema(cell, date1904);
     if (cellSchema === null) continue;
     cells[address] = cellSchema;
   }
@@ -90,21 +92,28 @@ function chartToSchema(chart: NormalizedChart, sheetName: string): Record<string
   return out;
 }
 
-function cellToSchema(cell: Cell): Record<string, unknown> | null {
-  let value = cell.value;
-  const format = cell.format;
-
+function dateOrValue<T>(value: T, format: CellFormat | null, date1904: boolean): T | string {
   if (
     format !== null &&
     (format.displayFormat === "date" || format.displayFormat === "datetime") &&
     isNumericString(value as never)
   ) {
-    value = DateInverter.toIso(Number(value), format.displayFormat === "datetime");
+    return DateInverter.toIso(Number(value), format.displayFormat === "datetime", date1904);
   }
+  return value;
+}
+
+function cellToSchema(cell: Cell, date1904 = false): Record<string, unknown> | null {
+  const format = cell.format;
+
+  // A formula's cached value is converted like the value: it is what the cell
+  // displays, and as a bare serial it read as a number nobody had written.
+  const value = dateOrValue(cell.value, format, date1904);
+  const cached = dateOrValue(cell.cachedValue, format, date1904);
 
   const out: Record<string, unknown> = { value };
   if (cell.formula !== null) out["formula"] = cell.formula;
-  if (cell.cachedValue !== null) out["computedValue"] = cell.cachedValue;
+  if (cached !== null) out["computedValue"] = cached;
   if (format !== null && !format.isEmpty()) out["format"] = formatToObject(format);
   if (cell.comment !== null) out["comment"] = commentToObject(cell.comment);
 

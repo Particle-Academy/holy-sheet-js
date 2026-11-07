@@ -9,7 +9,11 @@ export const SharedStringsParser = {
   },
 };
 
-function renderSi(si: XmlNode): string {
+/**
+ * One string item's text: its `<t>`, or its `<r><t>` runs joined. Also how a
+ * cell's inline `<is>` is read, which has the same content model.
+ */
+export function renderSi(si: XmlNode): string {
   const t = el(si, "t");
   if (t) return t.text;
   return els(si, "r")

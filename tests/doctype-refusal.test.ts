@@ -144,29 +144,61 @@ describe("a DOCTYPE on a part", () => {
 });
 
 describe("what a consumer sees, per part: the same table as PHP", () => {
-  it("throws for a refused workbook part", () => {
-    const parts = xlsxParts();
-    parts["xl/workbook.xml"] = enc.encode(withDoctype(text(parts, "xl/workbook.xml")));
+  // A refused part used to read as an absent one, so a worksheet carrying a
+  // DOCTYPE came back as an EMPTY sheet and the caller could not tell that from
+  // a sheet with nothing on it. A refusal now refuses the file, as one in
+  // [Content_Types].xml always has. Mirrors PHP 2.11.5.
+  const REFUSING_PARTS = [
+    ...MARKER_PARTS,
+    "xl/styles.xml",
+    "xl/workbook.xml",
+    "xl/_rels/workbook.xml.rels",
+    "xl/worksheets/_rels/sheet1.xml.rels",
+    "xl/drawings/drawing1.xml",
+    "xl/drawings/_rels/drawing1.xml.rels",
+  ];
 
-    expect(() => Agent.read(zipOf(parts))).toThrow("failed to parse xl/workbook.xml");
-  });
+  it.each(REFUSING_PARTS.flatMap((p) => ENCODING_NAMES.map((e) => [p, e] as const)))(
+    "refuses the file when %s carries a DOCTYPE, %s",
+    (part, encoding) => {
+      const parts = xlsxParts();
+      parts[part] = ENCODINGS[encoding]!(withDoctype(text(parts, part)));
 
-  it("keeps the sheet, with no cells, for a refused worksheet part", () => {
+      expect(() => Agent.read(zipOf(parts))).toThrow(UnsupportedFormatException);
+      expect(() => Agent.read(zipOf(parts))).toThrow("carries a DOCTYPE");
+    },
+  );
+
+  it("refuses a worksheet with a DOCTYPE instead of reading it as an empty sheet", () => {
     const parts = xlsxParts();
     parts["xl/worksheets/sheet1.xml"] = enc.encode(withDoctype(text(parts, "xl/worksheets/sheet1.xml")));
+
+    expect(() => Agent.read(zipOf(parts))).toThrow(UnsupportedFormatException);
+  });
+
+  it("still reads a file whose optional part is missing", () => {
+    const parts = xlsxParts();
+    delete parts["docProps/core.xml"];
+    const read = Agent.read(zipOf(parts)) as any;
+
+    expect(read.sheets[0].cells.A1.value).toBe(MARKER);
+    expect(read.meta).toBeUndefined();
+  });
+
+  it("still reads a malformed worksheet as an empty sheet, because only a refusal raises", () => {
+    const parts = xlsxParts();
+    parts["xl/worksheets/sheet1.xml"] = enc.encode("<worksheet><sheetData>");
     const sheet = (Agent.read(zipOf(parts)) as any).sheets[0];
 
     expect(sheet.name).toBe("Sheet1");
     expect(sheet.cells ?? {}).toEqual({});
   });
 
-  it("reads the other parts without refused shared strings", () => {
+  it("still throws for a malformed workbook part", () => {
     const parts = xlsxParts();
-    parts["xl/sharedStrings.xml"] = enc.encode(withDoctype(text(parts, "xl/sharedStrings.xml")));
-    const cells = (Agent.read(zipOf(parts)) as any).sheets[0].cells;
+    parts["xl/workbook.xml"] = enc.encode("<?xml version='1.0'?>");
 
-    expect(cells.A1.value).toBe(MARKER);
-    expect(cells.A3?.value ?? "").not.toBe(MARKER);
+    expect(() => Agent.read(zipOf(parts))).toThrow("failed to parse xl/workbook.xml");
   });
 });
 
@@ -176,7 +208,7 @@ describe("the subset is never read as content", () => {
   const smuggling = (root: string): string => `<!DOCTYPE r [<!ENTITY y "a>${root}">]>`;
 
   it("takes no root from inside the subset", () => {
-    expect(parseXml(`<?xml version="1.0"?>${smuggling("<evil/>")}<r/>`)).toBeNull();
+    expect(() => parseXml(`<?xml version="1.0"?>${smuggling("<evil/>")}<r/>`)).toThrow(UnsupportedFormatException);
   });
 
   it("takes no cells from inside the subset", () => {
@@ -311,17 +343,26 @@ describe("ods", () => {
     expect(count(JSON.stringify(Agent.read(packed(odsParts()))), MARKER)).toBe(2);
   });
 
-  it.each(ENCODING_NAMES)("throws for a refused content part, %s", (encoding) => {
-    const parts: Record<string, string | Uint8Array> = odsParts("&x;");
-    parts["content.xml"] = ENCODINGS[encoding]!(withDoctype(parts["content.xml"] as string));
+  it.each(["content.xml", "styles.xml", "meta.xml"].flatMap((p) => ENCODING_NAMES.map((e) => [p, e] as const)))(
+    "refuses the file for a %s with a DOCTYPE, %s",
+    (part, encoding) => {
+      const parts: Record<string, string | Uint8Array> = odsParts();
+      parts[part] = ENCODINGS[encoding]!(withDoctype(parts[part] as string));
 
-    expect(() => Agent.read(packed(parts))).toThrow("failed to parse content.xml");
-  });
+      expect(() => Agent.read(packed(parts))).toThrow(UnsupportedFormatException);
+      expect(() => Agent.read(packed(parts))).toThrow("carries a DOCTYPE");
+    },
+  );
 
   it.each(ENCODING_NAMES)("takes nothing from a refused meta part, %s", (encoding) => {
     const parts: Record<string, string | Uint8Array> = odsParts();
     parts["meta.xml"] = ENCODINGS[encoding]!(withDoctype((parts["meta.xml"] as string).split(MARKER).join("&x;")));
-    const got = JSON.stringify(Agent.read(packed(parts)));
+    let got: string;
+    try {
+      got = JSON.stringify(Agent.read(packed(parts)));
+    } catch {
+      got = "(refused)";
+    }
 
     expect(got).not.toContain("&x;");
     expect(got).not.toContain(ENTITY);
@@ -334,7 +375,11 @@ describe("the gate", () => {
   });
 
   it("refuses a declaration of any kind, wherever it sits", () => {
-    expect(parseXml(`${DOCTYPE}<r/>`)).toBeNull();
+    expect(() => parseXml(`${DOCTYPE}<r/>`)).toThrow(UnsupportedFormatException);
+    expect(() => parseXml(`<?xml version="1.0"?><!-- c -->${DOCTYPE}<r/>`)).toThrow(UnsupportedFormatException);
+    expect(() => parseXml(`<!doctype r><r/>`)).toThrow(UnsupportedFormatException);
+    // Not a DOCTYPE before the root: PHP's libxml and Python's expat call these
+    // malformed, and so a part read as absent, not a refused file.
     expect(parseXml(`<r>${DOCTYPE}</r>`)).toBeNull();
     expect(parseXml("<!ELEMENT r ANY><r/>")).toBeNull();
   });
@@ -344,7 +389,7 @@ describe("the gate", () => {
     const parts = xlsxParts();
     parts["xl/workbook.xml"] = raw;
 
-    expect(() => Agent.read(zipOf(parts))).toThrow("failed to parse xl/workbook.xml");
+    expect(() => Agent.read(zipOf(parts))).toThrow(UnsupportedFormatException);
   });
 
   it("leaves nothing in src/ decoding a part or scanning for a DOCTYPE outside the gate", () => {
