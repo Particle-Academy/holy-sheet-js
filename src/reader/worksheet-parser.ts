@@ -93,12 +93,21 @@ function parseMerges(xml: XmlNode): MergedRegion[] {
   return out;
 }
 
+/** Excel's column limit (XFD). A `<col>` range past it is not a real sheet. */
+const MAX_COLUMNS = 16384;
+
 function parseColumnWidths(xml: XmlNode): Map<number, number> {
   const out = new Map<number, number>();
   for (const col of els(el(xml, "cols"), "col")) {
     if (col.attrs["customWidth"] === undefined) continue;
     const min = parseInt(col.attrs["min"] ?? "0", 10);
     const max = parseInt(col.attrs["max"] ?? "0", 10);
+    // Refused before the loop: an unbounded range would exhaust memory.
+    if (min > MAX_COLUMNS || max > MAX_COLUMNS) {
+      throw new Error(
+        `[holy-sheet] refused worksheet: a <col> range goes past Excel's column limit of 16,384`,
+      );
+    }
     const excelWidth = Number(col.attrs["width"] ?? "0");
     const px = excelWidth * 7 + 5;
     for (let i = min; i <= max; i++) out.set(i - 1, Math.round(px));
