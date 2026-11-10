@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.14.1] - 2026-11-10
+
 ### Changed
 
 - **The agent guide (`Agent.guide()`) catches up with 2.10 to 2.14.** It was
