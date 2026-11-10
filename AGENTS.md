@@ -145,6 +145,19 @@ section on it for the design; the port-specific traps are these.
 - **`LEN` is `.length`**, which already counts UTF-16 code units, as Excel does.
   Python needed a fix for this; JavaScript did not.
 
+## The agent guide is shipped surface
+
+`agent-guide/professional-workbooks.md`, embedded as `src/agent-guide.json`, is
+what `Agent.guide()` returns and what a model builds from, so it is part of the
+API. The PHP copy is canonical. Release checklist:
+
+- [ ] guide reviewed against this release's CHANGELOG
+
+`tests/agent-guide-covers-the-api.test.ts` fails on a function on `Agent` the
+guide never names; it cannot tell whether a new option or behaviour is
+described, which is what the review is for. Regenerate the JSON as
+`JSON.stringify({ guide }, null, 2) + "\n"` from the LF markdown.
+
 ## Testing
 
 `npm test` (vitest) and `npm run lint` (`tsc --noEmit`). `tests/ported-php/`

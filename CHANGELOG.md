@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The agent guide (`Agent.guide()`) catches up with 2.10 to 2.14.** It was
+  last touched at 2.9.0. New: building a large or formula-heavy workbook in
+  passes, checking after each; fixing only the cells a lint issue names
+  (`lint` -> ops checked against `opSchema()` -> `reduce`), with a worked
+  example; `diff`, `equivalent` and `validateAndRepair`; data validation;
+  border styles; reading with `sheet` and `limits`, `rows`, `convertTemplate`,
+  and refusals that name the limit. Byte-identical to the PHP package's copy
+  (new SHA-256 in all three repos). **What to do:** nothing; guide text only,
+  a patch.
+- Dev only: `tests/agent-guide-covers-the-api.test.ts` fails when a function on
+  `Agent` is not named in the guide and not on its allowlist, where each entry
+  carries its reason (`guide`, `version`). It failed on the 2.9.0 guide, which
+  named none of 12.
+
 ## [2.14.0] - 2026-11-07
 
 Owner decision, 2026-11-07: "all limitations need to be a config option so apps
