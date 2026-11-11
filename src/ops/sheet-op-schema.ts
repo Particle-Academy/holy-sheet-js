@@ -44,7 +44,7 @@ export const SheetOpSchema = {
     const variants = [
       variant(
         "set_cell",
-        { sheet: sheet(), address: address(), value: value(), formula: { type: "string" }, computedValue: value(), format: nullableObject(), comment: nullableObject() },
+        { sheet: sheet(), address: address(), value: value(), formula: { type: "string", description: "Formula text, canonically written without the leading '=' (e.g. 'A2*2'); a leading '=' is accepted and stripped." }, computedValue: value(), format: nullableObject(), comment: nullableObject() },
         ["sheet", "address"],
         "Write one cell. Omitting formula or computedValue clears it; omitting format or comment keeps it; null clears it.",
       ),

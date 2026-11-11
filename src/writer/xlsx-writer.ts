@@ -294,7 +294,8 @@ export class XlsxWriter {
     const sAttr = styleIdx > 0 ? ` s="${styleIdx}"` : "";
 
     if (cell.formula !== null) {
-      const f = this.escape(cell.formula.replace(/^=+/, ""));
+      // Already canonical (no leading "="): Cell.canonicalFormula().
+      const f = this.escape(cell.formula);
       const cached = cell.cachedValue ?? cell.value;
       const v = cached !== null ? `<v>${this.escape(String(cached))}</v>` : "";
       return `<c r="${ref}"${sAttr}><f>${f}</f>${v}</c>`;

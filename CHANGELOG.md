@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`Agent.lint` reads a formula with a leading `=` the way `Agent.write` does**
+  (PHP holy-sheet 2.14.2). The writer always stripped it (`"=A2*2"` was written
+  `<f>A2*2</f>`), but the linter parsed the raw text and reported `#NAME?`
+  "Syntax error: unexpected '='", so an agent following lint, ops, reduce, lint
+  wrote `"=A2*2"`, was told it was broken, and looped. The stripping now happens
+  once, in `Cell` (`Cell.canonicalFormula()`), so every entry point sees the same
+  text; `validate`, `validateAndRepair`, `reduce`, `diff` and `equivalent`
+  already agreed and are pinned by tests. A lint issue's `formula` is now the
+  canonical text (no leading `=`). Nothing to do as a consumer: a formula
+  written either way writes the same bytes as before.
+- `Agent.opSchema()` describes `set_cell.formula`: written without the leading
+  `=`, a leading `=` accepted and stripped, byte-identical to PHP's. The agent
+  guide says the same in its lint-and-fix section.
+- Dev only: the ops parity suite lints a replayed `"=..."` formula in both
+  engines (`scripts/php-diff.php` takes `"lint": true`) and requires both clean.
+
 ## [2.14.1] - 2026-11-10
 
 ### Changed

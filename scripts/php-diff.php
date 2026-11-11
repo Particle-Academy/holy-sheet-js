@@ -19,7 +19,8 @@ declare(strict_types=1);
  * directly. A case {"nested": {"leaf": x, "depth": n, "map": bool}} wraps x in
  * n arrays (lists, or maps under "k") HERE, and answers {"same": SheetDiff::same(v, v)},
  * which pins where json_encode's depth runs out without sending that nesting
- * through JSON. A case that throws answers {"error": ...}.
+ * through JSON. A case with "lint": true also answers {"lint": Agent::lint(reduced)}.
+ * A case that throws answers {"error": ...}.
  *
  *   php php-diff.php --op-schema     -> Agent::opSchema()
  */
@@ -67,7 +68,13 @@ $run = static function (array $case): array {
             ? $case['ops']
             : \HolySheet\Agent::diff($case['a'], $case['b']);
 
-        return ['ops' => $ops, 'reduced' => \HolySheet\Agent::reduce($case['a'], $ops)];
+        $reduced = \HolySheet\Agent::reduce($case['a'], $ops);
+
+        // "lint": true also lints the replayed schema, so the two linters are
+        // compared on what reduce hands them.
+        return ! empty($case['lint'])
+            ? ['ops' => $ops, 'reduced' => $reduced, 'lint' => \HolySheet\Agent::lint($reduced)]
+            : ['ops' => $ops, 'reduced' => $reduced];
     } catch (\Throwable $e) {
         return ['error' => get_class($e) . ': ' . $e->getMessage()];
     }

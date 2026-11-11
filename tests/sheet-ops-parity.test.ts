@@ -47,7 +47,7 @@ function normalize(value: Any): Any {
 }
 
 type Nested = { leaf: Any; depth: number; map: boolean };
-type Case = { name: string; a?: Any; b?: Any; ops?: Any[]; hunks?: [string[], string[]]; nested?: Nested };
+type Case = { name: string; a?: Any; b?: Any; ops?: Any[]; hunks?: [string[], string[]]; nested?: Nested; lint?: boolean };
 
 const cases: Case[] = [];
 
@@ -132,6 +132,20 @@ cases.push(
     name: "a lower-case address moved by a row delete",
     a: two({ name: "S", cells: { b3: { value: 1 }, A1: { value: 2 } } }, { name: "T", cells: { A1: { value: 1 } } }),
     b: two({ name: "S", cells: { A1: { value: 3 } } }, { name: "T", cells: { A1: { value: 4 } } }),
+  },
+  {
+    // Reported against 2.14.0: lint read "=A2*2" as a syntax error that write
+    // stripped. reduce keeps the op's text; both linters must read it as write does.
+    name: "a set_cell formula with a leading = lints as the canonical form",
+    a: {
+      sheets: [{ name: "Model", columns: [{ header: "Base", type: "number" }, { header: "Scenario", type: "number" }], rows: [[100, 0]] }],
+      meta: { creator: "Parity", created: "2026-09-15T00:00:00Z" },
+    },
+    ops: [
+      { type: "set_cell", sheet: "Model", address: "B2", formula: "=A2*2" },
+      { type: "set_cell", sheet: "Model", address: "C2", formula: "==B2+1" },
+    ],
+    lint: true,
   },
   {
     name: "a null formula cannot be written, so the sheet is replaced",
@@ -319,7 +333,7 @@ describe.skipIf(!HAS_PHP)("cross-engine ops parity (PHP vs TS)", () => {
   beforeAll(() => {
     const dir = mkdtempSync(join(tmpdir(), "holy-sheet-ops-parity-"));
     const file = join(dir, "cases.json");
-    writeFileSync(file, JSON.stringify(cases.map(({ a, b, ops, hunks, nested }) => (nested ? { nested } : hunks ? { hunks } : ops ? { a, ops } : { a, b }))));
+    writeFileSync(file, JSON.stringify(cases.map(({ a, b, ops, hunks, nested, lint }) => (nested ? { nested } : hunks ? { hunks } : ops ? (lint ? { a, ops, lint } : { a, ops }) : { a, b }))));
     results = JSON.parse(php([PHP_SCRIPT, file]).toString("utf8"));
   }, 120_000);
 
@@ -363,6 +377,12 @@ describe.skipIf(!HAS_PHP)("cross-engine ops parity (PHP vs TS)", () => {
       // And replaying them gives the same schema.
       const tsReduced = JSON.parse(JSON.stringify(Agent.reduce(testCase.a, tsOps)));
       expect(normalize(tsReduced)).toEqual(normalize(phpResult.reduced));
+
+      if (testCase.lint) {
+        // Both linters read the replayed schema the same way, and clean.
+        expect(Agent.lint(tsReduced)).toEqual(phpResult.lint);
+        expect(phpResult.lint).toEqual([]);
+      }
 
       if (testCase.b !== undefined) {
         // No ops means the two write the same workbook, not that they are the same JSON.
