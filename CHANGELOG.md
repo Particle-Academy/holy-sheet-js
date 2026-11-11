@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Releases need a lab-run certificate.** `publish.yml` gains a read-only
+  `lab-certificate` job that every publishing job needs: a tag is published only
+  when the fancy-labs lab has certified that exact version and commit. Consumers
+  do nothing; this changes how releases are cut, not what the package does.
+
 ## [2.14.2] - 2026-11-10
 
 ### Fixed
@@ -664,7 +671,6 @@ produces. Error labels and hint texts are byte-identical to PHP and Python.
   still wins. Output bytes change for anyone who had `width` set — which is why
   this is a minor rather than a patch.
 
-
 ## [2.4.3] — 2026-09-14
 
 ### Fixed
@@ -889,7 +895,6 @@ missing sheet linting clean. It now reports `#REF!`.
   `VersionIsSingleSourcedTest` / `version.test.ts` now pins it, so the class is
   closed rather than the instance fixed. `dark-slide-py` already had that
   assertion and was the only engine in the family to catch itself.
-
 
 ## 2.2.0 — 2026-09-10
 
