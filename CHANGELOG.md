@@ -24,6 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docs:** `AGENTS.md` is now the guide to using this package (install, its entries on the Fancy MCP catalog server, API essentials, traps), and it ships in the package. The contributor notes it held moved to `CONTRIBUTING.md`, and `CLAUDE.md` is now a symlink to it. The README points to the MCP server and to `AGENTS.md`. No code changed; nothing to do.
 - CI: re-pin org third-party allowlist to 2614224
 
+### Fixed
+
+- **Docs: an `.xlsm` is read; only an `.xltm` is refused.** The agent guide
+  called an `.xlsm` a "macro-enabled template" that is "refused, never read".
+  `read()` reads an `.xlsm` workbook's values and ignores its macros, as this
+  changelog already said. The guide now also says that a text cell starting
+  with `=` reads as text (only a cell with a formula is a formula) and that an
+  error cell reads as its error string, e.g. `"#DIV/0!"`. Same text in all
+  three engines; the guide's hash pin and `src/agent-guide.json` moved with it.
+  No code changed; nothing to do.
+
 ## [2.14.2] - 2026-11-10
 
 ### Fixed
