@@ -2,7 +2,7 @@ import agentGuide from "./agent-guide.json";
 import { ArrayBuilder } from "./helpers/array-builder";
 import { CsvBuilder } from "./helpers/csv-builder";
 import { FormulaLinter } from "./schema/formula-linter";
-import { Normalizer } from "./schema/normalizer";
+import { Normalizer, type FormulasMode } from "./schema/normalizer";
 import { Validator } from "./schema/validator";
 import type {
   BuilderOptions,
@@ -62,6 +62,28 @@ function readOptions(options: unknown): [string | null, ReadLimits] {
   return [sheet as string | null, ReadLimits.from(o["limits"] ?? {})];
 }
 
+/** `write()` / `toBytes()` options. Mirrors PHP `Agent::write($schema, $path, ['formulas' => ...])`. */
+export interface WriteOptions {
+  /**
+   * `"promote"` (the default): a bare string beginning with "=" is a formula.
+   * `"explicit"`: it is text, and only a `{formula: ...}` cell writes one. Use
+   * `"explicit"` when cell text comes from anyone but the caller, such as
+   * customer data in an export. CC-fancy-0050.
+   */
+  formulas?: FormulasMode;
+}
+
+/** The write options, checked before the schema is. Mirrors PHP `Agent::writeOptions`. */
+function writeOptions(options: unknown): Normalizer {
+  const o = (options ?? {}) as Record<string, unknown>;
+  for (const key of Object.keys(o)) {
+    if (key !== "formulas") throw new Error(`[holy-sheet] unknown write option: ${key}`);
+  }
+  const formulas = o["formulas"] ?? "promote";
+  // The Normalizer refuses anything but the two modes, `true` included.
+  return new Normalizer((typeof formulas === "string" ? formulas : "") as FormulasMode);
+}
+
 function readSpreadsheet(bytes: Uint8Array, path: string | null, options: ReadOptions = {}): Record<string, unknown> {
   const [sheet, limits] = readOptions(options);
   const { format, files } = FormatSniffer.sniff(bytes, path, limits.archive);
@@ -81,17 +103,27 @@ export const Agent = {
     return new Validator().validate(schema);
   },
 
-  /** xlsx bytes without touching disk. Universal. Throws SchemaException if invalid. */
-  toBytes(schema: Any): Uint8Array {
+  /**
+   * xlsx bytes without touching disk. Universal. Throws SchemaException if
+   * invalid. Options are write()'s (`formulas`: `"promote"` | `"explicit"`).
+   */
+  toBytes(schema: Any, options: WriteOptions = {}): Uint8Array {
+    const normalizer = writeOptions(options);
     new Validator().assert(schema);
-    const workbook = new Normalizer().normalize(schema);
+    const workbook = normalizer.normalize(schema);
     return new XlsxWriter().toBytes(workbook);
   },
 
-  /** Write a workbook to disk (Node only). Throws SchemaException if invalid. */
-  async write(schema: Any, path: string): Promise<WriteResult> {
+  /**
+   * Write a workbook to disk (Node only). Throws SchemaException if invalid.
+   * `options.formulas` is `"promote"` (the default: a bare "=" string is a
+   * formula) or `"explicit"` (it is text). An unknown option or mode throws
+   * before anything is written.
+   */
+  async write(schema: Any, path: string, options: WriteOptions = {}): Promise<WriteResult> {
+    const normalizer = writeOptions(options);
     new Validator().assert(schema);
-    const workbook = new Normalizer().normalize(schema);
+    const workbook = normalizer.normalize(schema);
     const bytes = new XlsxWriter().toBytes(workbook);
     const fs = await import("node:fs");
     fs.writeFileSync(path, bytes);

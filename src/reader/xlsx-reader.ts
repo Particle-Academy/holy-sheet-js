@@ -12,7 +12,7 @@ import { SharedStringsParser } from "./shared-strings-parser";
 import { StylesParser } from "./styles-parser";
 import { WorkbookSchema } from "./workbook-schema";
 import { WorksheetParser } from "./worksheet-parser";
-import { at, decodePart, el, els, parseXml } from "./xml";
+import { at, decodePart, el, els, parseXml, type XmlNode } from "./xml";
 
 
 /** XLSX reader — bytes → Holy Sheet schema. Mirrors PHP `Reader\XlsxReader`. */
@@ -59,8 +59,14 @@ export class XlsxReader {
     }
 
     const sheets: Sheet[] = [];
+    // The position in workbook.xml of each described sheet: activeTab counts
+    // the <sheet> elements, and a sheet whose part is missing is skipped
+    // below, so the two orders can differ.
+    const positions: number[] = [];
+    let position = -1;
     let i = 0;
     for (const sheetEl of els(el(workbookDoc, "sheets"), "sheet")) {
+      position++;
       const name = at(sheetEl, "name") ?? "";
       if (only !== null && name !== only) {
         // The sheet rels part is named by the position among READ sheets, so a
@@ -112,11 +118,14 @@ export class XlsxReader {
       }
 
       sheets.push(sheet);
+      positions.push(position);
       i++;
     }
 
     const meta = this.parseDocProps(getText("docProps/core.xml"));
-    return new Workbook(sheets, meta, kind, date1904);
+    // A read narrowed to one sheet is not the workbook, so it names no active sheet.
+    const active = only === null && sheets.length > 0 ? activeSheet(workbookDoc, positions, position) : null;
+    return new Workbook(sheets, meta, kind, date1904, active);
   }
 
   private parseDocProps(coreXml: string | null): Record<string, unknown> {
@@ -130,6 +139,29 @@ export class XlsxReader {
     if (created) meta["created"] = created.text;
     return meta;
   }
+}
+
+/**
+ * The described sheet that opens: the first `<workbookView>`'s `activeTab`,
+ * clamped to the `<sheet>` elements workbook.xml lists. Absent, or anything but
+ * a non-negative integer, is the default, 0. An active sheet the reader skipped
+ * (its part is missing) falls back to the first described sheet. Mirrors PHP
+ * `XlsxReader::activeSheet` (CC-fancy-0050).
+ */
+function activeSheet(workbook: XmlNode, positions: number[], lastPosition: number): number {
+  let tab = 0;
+  const view = els(el(workbook, "bookViews"), "workbookView")[0];
+  if (view !== undefined) {
+    // xsd:unsignedInt collapses whitespace; only the four XML spaces, as PHP's trim set.
+    const raw = (at(view, "activeTab") ?? "").replace(/^[ \t\n\r]+|[ \t\n\r]+$/g, "");
+    if (/^[0-9]+$/.test(raw)) {
+      // A digit string past any integer becomes a huge number, and the clamp
+      // takes it to the last sheet, as PHP's saturating cast does.
+      tab = Math.min(Number(raw), Math.max(0, lastPosition));
+    }
+  }
+  const index = positions.indexOf(tab);
+  return index < 0 ? 0 : index;
 }
 
 function resolveRelativePath(base: string, target: string): string {

@@ -7,7 +7,7 @@ import { MergedRegion } from "../workbook/merged-region";
 import { Sheet } from "../workbook/sheet";
 import { Workbook } from "../workbook/workbook";
 import type { CellPrimitive } from "../schema/types";
-import { NS, asciiLower, attr, child, phpInt, phpIsNumeric, phpTrim } from "./ods/ns";
+import { NS, asciiLower, attr, child, ownText, phpInt, phpIsNumeric, phpTrim } from "./ods/ns";
 import { odsFormulaToA1 } from "./ods/ods-formula";
 import { OdsStyles } from "./ods/ods-styles";
 import { paragraphs } from "./ods/ods-text";
@@ -91,8 +91,17 @@ export class OdsReader {
       sheets.push(this.readSheet(table, styles));
     }
 
+    // A read narrowed to one table is not the workbook, so it names no active sheet.
+    let active: number | null = null;
+    if (only === null && sheets.length > 0) {
+      const settings = getText("settings.xml");
+      const name = settings === null ? null : activeTable(settings);
+      const index = name === null ? -1 : sheets.findIndex((s) => s.name === name);
+      active = index < 0 ? 0 : index;
+    }
+
     const meta = getText("meta.xml");
-    return new Workbook(sheets, meta === null ? {} : readMeta(meta), kind);
+    return new Workbook(sheets, meta === null ? {} : readMeta(meta), kind, false, active);
   }
 
   private readSheet(table: XmlNode, styles: OdsStyles): Sheet {
@@ -368,6 +377,27 @@ function isoFromSeconds(seconds: number, withTime: boolean): string {
   const date = `${pad(d.getUTCFullYear(), 4)}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   if (!withTime) return date;
   return `${date}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}Z`;
+}
+
+/**
+ * The table the document opens on, by name: the `ActiveTable` item of the first
+ * entry of the `Views` map in settings.xml's `ooo:view-settings`, as LibreOffice
+ * writes it. Null when the part does not say. Mirrors PHP
+ * `OdsReader::activeTable` (CC-fancy-0050).
+ */
+function activeTable(xml: string): string | null {
+  const doc = parseXml(xml, { namespaces: true });
+  const settings = child(doc, NS.OFFICE, "settings");
+  const view = configNamed(settings, "config-item-set", "ooo:view-settings");
+  const views = configNamed(view, "config-item-map-indexed", "Views");
+  const entry = child(views, NS.CONFIG, "config-item-map-entry");
+  const item = configNamed(entry, "config-item", "ActiveTable");
+  return item === undefined ? null : ownText(item);
+}
+
+/** The first `config:<element>` child whose `config:name` is `name`. */
+function configNamed(parent: XmlNode | null | undefined, element: string, name: string): XmlNode | undefined {
+  return parent?.children.find((c) => c.ns === NS.CONFIG && c.name === element && attr(c, NS.CONFIG, "name") === name);
 }
 
 function readMeta(xml: string): Record<string, string> {

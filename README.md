@@ -56,13 +56,14 @@ editing.
 `Agent` (static) mirrors the PHP surface:
 
 - `validate(schema)` → structured errors `{path, expected, got, value, hint}[]`
-- `toBytes(schema)` → `Uint8Array` (universal)
-- `write(schema, path)` → `{path, bytes, sheets}` (Node only)
+- `toBytes(schema, { formulas? })` → `Uint8Array` (universal). `formulas: "explicit"` writes a bare `"=..."` string as text, so only a `{ formula }` cell is a formula; use it for text you did not author. The default, `"promote"`, makes the bare string a formula
+- `write(schema, path, { formulas? })` → `{path, bytes, sheets}` (Node only)
 - `validateAndRepair(schema)` → `{schema, errors, repairs}`
 - `lint(schema)` → formula problems `{sheet, address, formula, error, hint}[]`
 - `fromArray(rows, headers?, sheetName?, options?)` → schema
 - `fromCsv(csvOrPath, options?)` → schema
 - `read(bytes, { sheet?, limits? })` → schema (universal) and `describe(path, { sheet?, limits? })` → schema (Node only): the round-trip reader, for an `.xlsx` **or an `.ods`** (see [Reading](#reading-one-sheet-rows-and-read-limits))
+- A read names the sheet the file opens on, `activeSheet: { index, name }`; write `activeSheet: "Summary"` to choose it
 - `rows(sheet, { formulas?, maxCells? })` → a read sheet as rows of values
 - `toolDefinition()` → JSON Schema for LLM tool-use
 - `diff(a, b)` → the ops that turn one schema into another, `reduce(schema, opOrOps)` → a new schema, `opSchema()` → JSON Schema for one op, `equivalent(a, b)` → whether two schemas write the same workbook (see [Versions as diffs](#versions-as-diffs))

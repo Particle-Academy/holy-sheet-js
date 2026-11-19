@@ -20,6 +20,12 @@ export const WorkbookSchema = {
     const schema: Record<string, unknown> = {
       sheets: workbook.sheets.map((sheet) => sheetToSchema(sheet, workbook.date1904)),
     };
+    // The sheet that opens, as an index into `sheets` and its name, so a caller
+    // never has to assume it is the first. Write takes the name back.
+    const active = workbook.activeSheet;
+    if (active !== null && workbook.sheets[active] !== undefined) {
+      schema["activeSheet"] = { index: active, name: workbook.sheets[active]!.name };
+    }
     if (Object.keys(workbook.meta).length > 0) schema["meta"] = workbook.meta;
     // Only templates say so; a document read is unchanged.
     if (workbook.sourceKind === "template") schema["sourceKind"] = "template";

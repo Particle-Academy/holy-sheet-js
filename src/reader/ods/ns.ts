@@ -16,6 +16,8 @@ export const NS = {
   NUMBER: "urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0",
   DC: "http://purl.org/dc/elements/1.1/",
   META: "urn:oasis:names:tc:opendocument:xmlns:meta:1.0",
+  /** settings.xml: the view settings that name the active table. */
+  CONFIG: "urn:oasis:names:tc:opendocument:xmlns:config:1.0",
   /** LibreOffice's extension namespace; carries `value-type="error"` for a formula error. */
   CALCEXT: "urn:org:documentfoundation:names:experimental:calc:xmlns:calcext:1.0",
 } as const;

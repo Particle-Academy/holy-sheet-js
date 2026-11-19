@@ -59,6 +59,10 @@ export class Validator {
       errors.push(...this.validateSheet(sheet, `sheets[${i}]`, sheetNames));
     });
 
+    if (schema.activeSheet !== undefined) {
+      errors.push(...validateActiveSheet(schema.activeSheet, sheetNames));
+    }
+
     return errors;
   }
 
@@ -550,6 +554,41 @@ function validateBorders(format: Record<string, Any>, path: string): ValidationE
     }
   }
   return errors;
+}
+
+/**
+ * `activeSheet` names the sheet shown when the file opens: a sheet name, or the
+ * `{index, name}` object read() returns (its name decides; the index is where
+ * the sheet was when it was read). Mirrors PHP `Validator::validateActiveSheet`,
+ * less its hidden-sheet check: this port has no sheet `state`. CC-fancy-0050.
+ */
+function validateActiveSheet(active: Any, sheetNames: string[]): ValidationError[] {
+  const hint =
+    'Name the sheet shown when the file opens, e.g. "activeSheet": "Summary". ' +
+    'The {"index", "name"} object read() returns works too; its name decides.';
+  let path = "activeSheet";
+  let name: Any = active;
+  // PHP decodes JSON `{}` to [], so an empty array is the nameless object there too.
+  if (isPlainObject(active) || (Array.isArray(active) && active.length === 0)) {
+    path = "activeSheet.name";
+    name = (active as Any).name ?? null;
+  }
+  if (typeof name !== "string") {
+    return [error(path, "sheet name (string)", typeOf(name), name, hint)];
+  }
+  if (!sheetNames.includes(name)) {
+    const listed = sheetNames.map((n) => `"${n}"`).join(", ");
+    return [
+      error(
+        "activeSheet",
+        'the name of a sheet in "sheets"',
+        "unknown sheet",
+        name,
+        `No sheet is named "${name}". Names match exactly; this workbook has: ${listed}.`,
+      ),
+    ];
+  }
+  return [];
 }
 
 function error(

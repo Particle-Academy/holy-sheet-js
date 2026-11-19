@@ -10,6 +10,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`Agent.read()` names the sheet the workbook opens on** (CC-fancy-0050):
+  `activeSheet: {index, name}`, right after `sheets`, from the first
+  `<workbookView activeTab>` (absent or not a non-negative integer: 0; past the
+  last sheet: the last), or an `.ods` view's `ActiveTable`. The index counts the
+  described sheets. Left out when the `sheet` option narrows the read. Mirrors
+  PHP holy-sheet, from the same shared fixtures. Additive; a caller that ignores
+  the key sees nothing change.
+- **The writer takes `activeSheet`**, a sheet name or the object `read()`
+  returns (its `name` decides), and writes `<workbookView activeTab>`. Naming the
+  first sheet, or nothing, writes no `bookViews`, so existing output is
+  byte-identical. The validator refuses an unknown name or a non-string with the
+  usual structured error. The tool schema describes it; its hash pin moved.
+- **Write option `formulas: "promote" | "explicit"`** on
+  `Agent.toBytes(schema, options)`, `Agent.write(schema, path, options)` and the
+  `HolySheet` class (`WriteOptions`, `FormulasMode` exported). `"promote"`, the
+  default, is today's behaviour, byte-identical. Under `"explicit"` a bare string
+  starting with `=` is written as text, and only a `{formula: ...}` cell writes
+  `<f>`. Additive; the default is unchanged. **Use `formulas: "explicit"` for
+  untrusted data**, where promotion is formula injection. An unknown option or
+  mode throws before anything is written. The agent guide describes both; its
+  hash pin moved.
+- `scripts/php-tobytes.php` takes an optional options file, so the parity suite
+  compares the written parts with PHP under each mode
+  (`tests/active-sheet.test.ts`).
+
 ### Changed
 
 - **CI: the lab-certificate gate verifies against the lab's rotated key list.**

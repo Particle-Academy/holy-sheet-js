@@ -1,4 +1,4 @@
-import { Agent, VERSION, type ReadOptions } from "./agent";
+import { Agent, VERSION, type ReadOptions, type WriteOptions } from "./agent";
 import type { RowsOptions } from "./reader/rows-view";
 import type {
   BuilderOptions,
@@ -21,11 +21,11 @@ export class HolySheet {
   validate(schema: Any): ValidationError[] {
     return Agent.validate(schema);
   }
-  toBytes(schema: Any): Uint8Array {
-    return Agent.toBytes(schema);
+  toBytes(schema: Any, options: WriteOptions = {}): Uint8Array {
+    return Agent.toBytes(schema, options);
   }
-  write(schema: Any, path: string): Promise<WriteResult> {
-    return Agent.write(schema, path);
+  write(schema: Any, path: string, options: WriteOptions = {}): Promise<WriteResult> {
+    return Agent.write(schema, path, options);
   }
   toolDefinition(): Record<string, unknown> {
     return Agent.toolDefinition();

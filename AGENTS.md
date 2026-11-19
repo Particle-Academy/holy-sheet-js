@@ -40,6 +40,13 @@ works with any agent loop.
   (Node only).
 - Read: `Agent.read(bytes, { sheet?, limits? })` (universal, `.xlsx` or
   `.ods`), `await Agent.describe(path, ...)` (Node only), `Agent.rows(sheet, ...)`.
+  The result names the sheet the file opens on: `schema.activeSheet` is
+  `{ index: 1, name: "Summary" }` (left out when `sheet` narrowed the read).
+  Write `activeSheet: "Summary"` to choose it.
+- Write options: `Agent.toBytes(schema, { formulas: "explicit" })` (also
+  `write(schema, path, options)`). The default, `"promote"`, writes a bare string
+  starting with `=` as a formula; `"explicit"` writes it as text, so only a
+  `{ formula }` cell is a formula.
 - Build from data: `fromArray`, `fromCsv`.
 - Versions: `diff(a, b)`, `reduce(schema, ops)`, `opSchema()`, `equivalent(a, b)`.
 - Templates: `convertTemplate`, or the CLI
@@ -51,6 +58,11 @@ works with any agent loop.
   Everything else is synchronous and browser-safe.
 - **`read()` takes bytes** (`Uint8Array` or `ArrayBuffer`), not a path.
 - **Lint before writing.** A valid schema can still compute wrong.
+- **Writing text you did not author? Pass `{ formulas: "explicit" }`.** By
+  default a bare string starting with `=` becomes a formula, so customer data
+  like `=HYPERLINK(...)` in an export is formula injection. Explicit mode writes
+  it as text; put real formulas in `formula`.
+- **Do not assume the first sheet is the one people use.** Read `activeSheet`.
 - **Unsafe archives throw `ArchiveRefused`** with a `reason`; raise read
   ceilings through `limits` only on purpose.
 - PHP's `Toolkit` (ready agent tools) and `dumpJson` are not in this port;

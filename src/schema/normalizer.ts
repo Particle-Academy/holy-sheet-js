@@ -16,14 +16,51 @@ import { DataValidations } from "./data-validations";
 
 type Any = any; // input is loose agent JSON
 
+/** The `formulas` write option. CC-fancy-0050. */
+export type FormulasMode = "promote" | "explicit";
+
+/**
+ * The index of the sheet `activeSheet` names (a name, or read()'s
+ * `{index, name}`, whose name decides); null when it names none. The Validator
+ * has already refused a name that matches no sheet. Mirrors PHP.
+ */
+function activeSheetIndex(schema: Any, sheets: Sheet[]): number | null {
+  const active = schema.activeSheet ?? null;
+  const name = active !== null && typeof active === "object" ? (active.name ?? null) : active;
+  if (typeof name !== "string") return null;
+  const index = sheets.findIndex((sheet) => sheet.name === name);
+  return index < 0 ? null : index;
+}
+
 /** Schema → canonical Workbook. Mirrors PHP `Schema\Normalizer`. */
 export class Normalizer {
+  /** The `formulas` write option's two modes. CC-fancy-0050. */
+  static readonly FORMULAS = ["promote", "explicit"] as const;
+
+  /**
+   * `formulas`: `"promote"` (the default) writes a bare string beginning with
+   * "=" as a formula; `"explicit"` writes it as text, so only a
+   * `{formula: ...}` cell writes one. Use `"explicit"` for text the caller did
+   * not author: it closes formula injection. Mirrors PHP's constructor.
+   */
+  constructor(private readonly formulas: FormulasMode = "promote") {
+    if (!(Normalizer.FORMULAS as readonly unknown[]).includes(formulas)) {
+      throw new Error('[holy-sheet] write option formulas must be "promote" or "explicit"');
+    }
+  }
+
   normalize(schema: Any): Workbook {
     const sheets: Sheet[] = [];
     for (const sheetSchema of schema.sheets as Any[]) {
       sheets.push(this.normalizeSheet(sheetSchema));
     }
-    return new Workbook(sheets, (schema.meta as Record<string, unknown>) ?? {});
+    return new Workbook(
+      sheets,
+      (schema.meta as Record<string, unknown>) ?? {},
+      "document",
+      false,
+      activeSheetIndex(schema, sheets),
+    );
   }
 
   private normalizeSheet(sheet: Any): Sheet {
@@ -155,7 +192,7 @@ export class Normalizer {
       // formula string vanished outright — no error, just a hole in the sheet.
       // PHP has always had this branch; the port dropped it.
       if (!isCellSpec(cellData)) {
-        const [bare, formula] = promoteFormula(cellData);
+        const [bare, formula] = promoteFormula(cellData, this.formulas);
         cells.set(
           address,
           new Cell(
@@ -323,7 +360,7 @@ export class Normalizer {
       );
     }
 
-    const [bare, formula] = promoteFormula(value);
+    const [bare, formula] = promoteFormula(value, this.formulas);
 
     return new Cell(
       address,
@@ -480,9 +517,11 @@ function hasOwnToString(value: object): boolean {
  * escape hatch for a genuine leading-"=" string. Mirrors PHP
  * `Normalizer::promoteFormula`, which the port had omitted entirely: the same
  * schema produced a formula in PHP and the literal text "=SUM(B2:B10)" in Node.
+ *
+ * Under the `explicit` formulas mode nothing promotes: the string is text.
  */
-function promoteFormula(value: Any): [Any, string | null] {
-  if (typeof value === "string" && value.length > 1 && value[0] === "=") {
+function promoteFormula(value: Any, mode: FormulasMode = "promote"): [Any, string | null] {
+  if (mode === "promote" && typeof value === "string" && value.length > 1 && value[0] === "=") {
     return [null, value.slice(1)];
   }
   return [value, null];

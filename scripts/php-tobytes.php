@@ -7,7 +7,7 @@ declare(strict_types=1);
  * given JSON schema, so the TS port can be diffed against it. Uses a minimal
  * PSR-4 autoloader (the PHP core is zero-dependency) — no composer needed.
  *
- *   php php-tobytes.php <schema.json> <out.xlsx>
+ *   php php-tobytes.php <schema.json> <out.xlsx> [<options.json>]
  */
 
 spl_autoload_register(function (string $class): void {
@@ -29,5 +29,7 @@ spl_autoload_register(function (string $class): void {
 
 $schemaJson = file_get_contents($argv[1]);
 $schema = json_decode($schemaJson, true);
-$bytes = \HolySheet\Agent::toBytes($schema);
+// Optional third argument: a JSON file of write options (`formulas`, CC-fancy-0050).
+$options = isset($argv[3]) ? json_decode((string) file_get_contents($argv[3]), true) : [];
+$bytes = \HolySheet\Agent::toBytes($schema, is_array($options) ? $options : []);
 file_put_contents($argv[2], $bytes);

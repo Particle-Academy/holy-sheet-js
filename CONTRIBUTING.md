@@ -114,6 +114,15 @@ coerces the value through the type-derived format kept beside it. This port's
 reader does not yet keep a foreign code from a file, and `fromInput` does not read
 a cell-level `formatCode`; PHP does both.
 
+**The active sheet and the `formulas` option follow PHP (CC-fancy-0050).**
+`read()` puts `activeSheet: {index, name}` right after `sheets`;
+`tests/active-sheet.test.ts` runs the PHP repo's shared
+`tests/fixtures/active-sheet/cases.json` and compares the written parts with
+PHP under each `formulas` mode (`scripts/php-tobytes.php` takes an options
+file). PHP also makes the first visible sheet active when the first is hidden;
+this port has no sheet `state`, so its writer emits `bookViews` only for an
+`activeSheet` other than the first.
+
 **Numbers follow PHP, not JavaScript.** `src/util.ts` holds the PHP-semantics
 helpers (`isNumericString`, numeric-string coercion). `parseInt` / `parseFloat`
 do not mirror PHP's casts (`parseInt("1e5")` is 1, PHP says 100000), so reach

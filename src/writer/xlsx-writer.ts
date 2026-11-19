@@ -158,9 +158,16 @@ export class XlsxWriter {
       const rId = "rId" + (i + 1);
       sheets += `<sheet name="${name}" sheetId="${sheetId}" r:id="${rId}"/>`;
     });
+    // The active tab defaults to the first sheet, so only an `activeSheet`
+    // naming another one needs saying; naming the default writes nothing, so
+    // its bytes are unchanged. (PHP also says it for a hidden first sheet; this
+    // port has no sheet state.) CC-fancy-0050.
+    const active = workbook.activeSheet ?? 0;
+    const bookViews = active !== 0 ? `<bookViews><workbookView activeTab="${active}"/></bookViews>` : "";
     return (
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      bookViews +
       `<sheets>${sheets}</sheets>` +
       "</workbook>"
     );

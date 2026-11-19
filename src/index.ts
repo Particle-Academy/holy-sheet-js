@@ -1,4 +1,4 @@
-export { Agent, VERSION, type ReadOptions } from "./agent";
+export { Agent, VERSION, type ReadOptions, type WriteOptions } from "./agent";
 export { HolySheet } from "./holy-sheet";
 export {
   ArchiveRefused,
@@ -21,7 +21,7 @@ export type * from "./ops/types";
 // Lower-level building blocks (advanced use / parity with PHP services).
 export { Validator } from "./schema/validator";
 export { Repairer } from "./schema/repairer";
-export { Normalizer } from "./schema/normalizer";
+export { Normalizer, type FormulasMode } from "./schema/normalizer";
 export { FormulaLinter } from "./schema/formula-linter";
 export { Inference } from "./schema/inference";
 export { Theme } from "./schema/theme";

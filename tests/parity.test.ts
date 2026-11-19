@@ -303,6 +303,21 @@ const SCHEMAS: Record<string, unknown> = {
   },
 
   /** One page wide and tall. */
+  /**
+   * CC-fancy-0050: a schema naming a sheet other than the first writes
+   * `<bookViews><workbookView activeTab="1"/></bookViews>`, and every engine
+   * reads it back as `activeSheet: {index: 1, name: "Second"}`. Mirrored in
+   * holy-sheet-py's parity fixtures.
+   */
+  activeSheet: {
+    meta: META,
+    activeSheet: "Second",
+    sheets: [
+      { name: "First", cells: { A1: "first" } },
+      { name: "Second", cells: { A1: "second" } },
+      { name: "Third", cells: { A1: "third" } },
+    ],
+  },
   printFitToPage: {
     meta: META,
     sheets: [{ name: "Fit", cells: { A1: { value: "Title" } }, print: { orientation: "portrait", fitToPage: true } }],
