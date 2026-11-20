@@ -10,39 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **Workbooks with absolute relationship targets (openpyxl, LibreOffice and
-  others) now read; a missing part now raises instead of being skipped
-  silently.** The reader built every worksheet path as `"xl/" + target`, so
-  openpyxl's `Target="/xl/worksheets/sheet1.xml"` became
-  `xl/xl/worksheets/sheet1.xml`, was not found, and `Agent.read()` returned
-  ZERO sheets with no error. Every relationship target now resolves per OPC
-  (ECMA-376 Part 2): against the directory of the part that owns the
-  relationship, or package-absolute when it starts with `/`, with `.` and `..`
-  normalised (`RelsParser.resolve`). That covers the workbook's sheets, each
-  sheet's comments and drawings, and each drawing's charts. Also fixed on the
-  way:
-  - a sheet's rels part is found from its ACTUAL part name
-    (`xl/worksheets/_rels/<name>.xml.rels`), not positionally as
-    `sheet${i + 1}.xml.rels`, which handed each sheet another sheet's comments
-    and charts whenever the tab order and the part names differed;
-  - styles and shared strings are found through the workbook's relationships,
-    falling back to `xl/styles.xml` / `xl/sharedStrings.xml` only when none is
-    declared;
-  - `TargetMode="External"` relationships (hyperlinks, linked files) are never
-    read as parts (`RelsParser.isExternal`; `Rel` gains `TargetMode`).
-- **Behaviour change: a relationship whose part is missing throws
-  `MissingPartException`** (new, exported, carrying `part`, `source` and
-  `relId`), as does a `<sheet>` whose `r:id` names no relationship. Before, the
-  sheet, comments or chart was dropped silently. What to do: nothing for a
-  well-formed file. If you read damaged packages on purpose, catch
-  `MissingPartException`. A sheet left out by the `sheet` option is never
-  opened, so its part is not required. The shared active-sheet cases for a
-  missing sheet part moved from "fall back" to "throws". Mirrors PHP holy-sheet
-  and Python, from the shared `tests/fixtures/rels-targets` fixtures.
-
-## [2.15.0] - 2026-11-19
+## [2.15.0] - 2026-11-20
 
 ### Added
 
@@ -101,6 +69,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error cell reads as its error string, e.g. `"#DIV/0!"`. Same text in all
   three engines; the guide's hash pin and `src/agent-guide.json` moved with it.
   No code changed; nothing to do.
+- **Workbooks with absolute relationship targets (openpyxl, LibreOffice and
+  others) now read; a missing part now raises instead of being skipped
+  silently.** The reader built every worksheet path as `"xl/" + target`, so
+  openpyxl's `Target="/xl/worksheets/sheet1.xml"` became
+  `xl/xl/worksheets/sheet1.xml`, was not found, and `Agent.read()` returned
+  ZERO sheets with no error. Every relationship target now resolves per OPC
+  (ECMA-376 Part 2): against the directory of the part that owns the
+  relationship, or package-absolute when it starts with `/`, with `.` and `..`
+  normalised (`RelsParser.resolve`). That covers the workbook's sheets, each
+  sheet's comments and drawings, and each drawing's charts. Also fixed on the
+  way:
+  - a sheet's rels part is found from its ACTUAL part name
+    (`xl/worksheets/_rels/<name>.xml.rels`), not positionally as
+    `sheet${i + 1}.xml.rels`, which handed each sheet another sheet's comments
+    and charts whenever the tab order and the part names differed;
+  - styles and shared strings are found through the workbook's relationships,
+    falling back to `xl/styles.xml` / `xl/sharedStrings.xml` only when none is
+    declared;
+  - `TargetMode="External"` relationships (hyperlinks, linked files) are never
+    read as parts (`RelsParser.isExternal`; `Rel` gains `TargetMode`).
+- **Behaviour change: a relationship whose part is missing throws
+  `MissingPartException`** (new, exported, carrying `part`, `source` and
+  `relId`), as does a `<sheet>` whose `r:id` names no relationship. Before, the
+  sheet, comments or chart was dropped silently. What to do: nothing for a
+  well-formed file. If you read damaged packages on purpose, catch
+  `MissingPartException`. A sheet left out by the `sheet` option is never
+  opened, so its part is not required. The shared active-sheet cases for a
+  missing sheet part moved from "fall back" to "throws". Mirrors PHP holy-sheet
+  and Python, from the shared `tests/fixtures/rels-targets` fixtures.
 
 ## [2.14.2] - 2026-11-10
 
