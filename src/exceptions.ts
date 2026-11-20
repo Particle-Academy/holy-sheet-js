@@ -94,6 +94,31 @@ export class SheetNotFoundException extends Error {
   }
 }
 
+/**
+ * A relationship in the package points at a part the package does not contain,
+ * or a `<sheet>` names a relationship that does not exist. The reader used to
+ * skip such a part silently, so a workbook whose every sheet was unreachable
+ * read as a workbook with no sheets and no error. `part` is the resolved part
+ * name (null when the relationship itself is missing), `source` the part that
+ * owns the relationship, `relId` its id. Mirrors PHP and Python
+ * `MissingPartException`, message included.
+ */
+export class MissingPartException extends Error {
+  constructor(
+    public readonly part: string | null,
+    public readonly source: string,
+    public readonly relId: string,
+  ) {
+    super(
+      part === null
+        ? `[holy-sheet] ${source} names relationship ${relId}, which its rels part does not have`
+        : `[holy-sheet] missing part ${part}: ${source} relationship ${relId} points to it, but the package does not contain it`,
+    );
+    this.name = "MissingPartException";
+    Object.setPrototypeOf(this, MissingPartException.prototype);
+  }
+}
+
 const TEMPLATE_MESSAGES: Record<string, string> = {
   macro_enabled: "Macro-enabled templates (.xltm) are refused: re-save it as an .xltx in Excel.",
   family_mismatch: "This package declares a template of a different kind than its contents.",

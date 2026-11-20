@@ -2,6 +2,7 @@ export { Agent, VERSION, type ReadOptions, type WriteOptions } from "./agent";
 export { HolySheet } from "./holy-sheet";
 export {
   ArchiveRefused,
+  MissingPartException,
   OfficeTemplateRefused,
   ReadLimitExceeded,
   SchemaException,

@@ -4,7 +4,7 @@ import { ChartParser } from "./chart-parser";
 import { Workbook } from "../workbook/workbook";
 import { unzipSync } from "../zip";
 import { filesView, sourceKind } from "../zip/office-template";
-import { SheetNotFoundException } from "../exceptions";
+import { MissingPartException, SheetNotFoundException } from "../exceptions";
 import { CommentsParser } from "./comments-parser";
 import { ReadLimits } from "./read-limits";
 import { RelsParser } from "./rels-parser";
@@ -36,17 +36,38 @@ export class XlsxReader {
     const kind = sourceKind(filesView(files));
     const getText = (name: string): string | null => (files[name] ? decodePart(files[name]) : null);
 
-    const stylesXml = getText("xl/styles.xml");
-    const stylesIndex = stylesXml ? StylesParser.parse(stylesXml) : [];
-
-    const sharedStringsXml = getText("xl/sharedStrings.xml");
-    const sharedStrings = sharedStringsXml ? SharedStringsParser.parse(sharedStringsXml, limits) : [];
-
-    const workbookXml = getText("xl/workbook.xml");
+    const workbookPath = "xl/workbook.xml";
+    const workbookXml = getText(workbookPath);
     if (workbookXml === null) throw new Error("[holy-sheet] missing xl/workbook.xml");
 
-    const workbookRelsXml = getText("xl/_rels/workbook.xml.rels");
+    const workbookRelsXml = getText(RelsParser.relsPathOf(workbookPath));
     const workbookRels = workbookRelsXml ? RelsParser.parse(workbookRelsXml) : {};
+
+    /** A part a relationship points at. Missing, it throws: a part skipped silently is how a workbook read as having no sheets. */
+    const requirePart = (part: string, source: string, relId: string): string => {
+      const text = getText(part);
+      if (text === null) throw new MissingPartException(part, source, relId);
+      return text;
+    };
+
+    // Styles and shared strings are wherever the workbook's relationships say;
+    // the conventional names are only the fallback for a package that declares
+    // neither. Matched on the Type's last segment, so transitional and strict
+    // namespaces both match. Mirrors PHP `XlsxReader::workbookPart`.
+    const workbookPart = (type: string, fallback: string): string | null => {
+      for (const [id, rel] of Object.entries(workbookRels)) {
+        if (!RelsParser.isExternal(rel) && rel.Type.endsWith("/" + type)) {
+          return requirePart(RelsParser.resolve(workbookPath, rel.Target), workbookPath, id);
+        }
+      }
+      return getText(fallback);
+    };
+
+    const stylesXml = workbookPart("styles", "xl/styles.xml");
+    const stylesIndex = stylesXml ? StylesParser.parse(stylesXml) : [];
+
+    const sharedStringsXml = workbookPart("sharedStrings", "xl/sharedStrings.xml");
+    const sharedStrings = sharedStringsXml ? SharedStringsParser.parse(sharedStringsXml, limits) : [];
 
     const workbookDoc = parseXml(workbookXml);
     if (!workbookDoc) throw new Error("[holy-sheet] failed to parse xl/workbook.xml");
@@ -60,66 +81,55 @@ export class XlsxReader {
 
     const sheets: Sheet[] = [];
     // The position in workbook.xml of each described sheet: activeTab counts
-    // the <sheet> elements, and a sheet whose part is missing is skipped
-    // below, so the two orders can differ.
+    // the <sheet> elements. Every listed sheet is described (a missing part
+    // throws), but the mapping is kept explicit.
     const positions: number[] = [];
     let position = -1;
-    let i = 0;
     for (const sheetEl of els(el(workbookDoc, "sheets"), "sheet")) {
       position++;
       const name = at(sheetEl, "name") ?? "";
-      if (only !== null && name !== only) {
-        // The sheet rels part is named by the position among READ sheets, so a
-        // skipped sheet advances it exactly when a full read would have.
-        const skipped = workbookRels[at(sheetEl, "id") ?? ""]?.Target;
-        if (skipped != null && files["xl/" + skipped.replace(/^\//, "")]) i++;
-        continue;
-      }
+      if (only !== null && name !== only) continue;
       const rId = at(sheetEl, "id") ?? ""; // r:id → local "id"
-      const target = workbookRels[rId]?.Target;
-      if (target == null) continue;
+      const sheetRel = workbookRels[rId];
+      if (sheetRel === undefined || RelsParser.isExternal(sheetRel)) throw new MissingPartException(null, workbookPath, rId);
 
-      const sheetPath = "xl/" + target.replace(/^\//, "");
-      const worksheetXml = getText(sheetPath);
-      if (worksheetXml === null) continue;
+      const sheetPath = RelsParser.resolve(workbookPath, sheetRel.Target);
+      const worksheetXml = requirePart(sheetPath, workbookPath, rId);
 
-      const sheetNum = i + 1;
-      const sheetRelsXml = getText(`xl/worksheets/_rels/sheet${sheetNum}.xml.rels`);
+      // The sheet's own rels part sits beside it, named after its actual part,
+      // not after its position in the tab strip (sheet3.xml can be the first tab).
+      const sheetRelsXml = getText(RelsParser.relsPathOf(sheetPath));
+      const sheetRels = sheetRelsXml ? RelsParser.parse(sheetRelsXml) : {};
+
       let comments: Record<string, CellComment> = {};
-      if (sheetRelsXml) {
-        const sheetRels = RelsParser.parse(sheetRelsXml);
-        for (const cr of Object.values(RelsParser.byType(sheetRels, "/comments"))) {
-          const commentsPath = resolveRelativePath(sheetPath, cr.Target);
-          const commentsXml = getText(commentsPath);
-          if (commentsXml) comments = { ...comments, ...CommentsParser.parse(commentsXml) };
-        }
+      for (const [cId, cr] of Object.entries(RelsParser.byType(sheetRels, "/comments"))) {
+        const commentsXml = requirePart(RelsParser.resolve(sheetPath, cr.Target), sheetPath, cId);
+        comments = { ...comments, ...CommentsParser.parse(commentsXml) };
       }
 
       let sheet = WorksheetParser.parse(worksheetXml, name, stylesIndex, comments, sharedStrings, limits);
 
       // Charts: sheet rels -> drawing -> drawing rels -> chart parts (see PHP).
-      if (sheetRelsXml) {
-        const charts: NormalizedChart[] = [];
-        for (const dr of Object.values(RelsParser.byType(RelsParser.parse(sheetRelsXml), "/drawing"))) {
-          const drawingPath = resolveRelativePath(sheetPath, dr.Target);
-          const slash = drawingPath.lastIndexOf("/");
-          const drawingXml = getText(drawingPath);
-          const drawingRelsXml = getText(drawingPath.slice(0, slash) + "/_rels/" + drawingPath.slice(slash + 1) + ".rels");
-          if (drawingXml === null || drawingRelsXml === null) continue;
-          const drawingRels = RelsParser.parse(drawingRelsXml);
-          for (const anchor of ChartParser.anchors(drawingXml)) {
-            const target = drawingRels[anchor.rel]?.Target;
-            const chartXml = typeof target === "string" ? getText(resolveRelativePath(drawingPath, target)) : null;
-            const chart = chartXml !== null ? ChartParser.chart(chartXml, name, anchor.from, anchor.to) : null;
-            if (chart !== null) charts.push(chart);
-          }
+      const charts: NormalizedChart[] = [];
+      for (const [dId, dr] of Object.entries(RelsParser.byType(sheetRels, "/drawing"))) {
+        const drawingPath = RelsParser.resolve(sheetPath, dr.Target);
+        const drawingXml = requirePart(drawingPath, sheetPath, dId);
+        // A drawing with no rels part holds no chart; that is not a missing part.
+        const drawingRelsXml = getText(RelsParser.relsPathOf(drawingPath));
+        if (drawingRelsXml === null) continue;
+        const drawingRels = RelsParser.parse(drawingRelsXml);
+        for (const anchor of ChartParser.anchors(drawingXml)) {
+          const chartRel = drawingRels[anchor.rel];
+          if (chartRel === undefined || RelsParser.isExternal(chartRel)) continue;
+          const chartXml = requirePart(RelsParser.resolve(drawingPath, chartRel.Target), drawingPath, anchor.rel);
+          const chart = ChartParser.chart(chartXml, name, anchor.from, anchor.to);
+          if (chart !== null) charts.push(chart);
         }
-        if (charts.length > 0) sheet = sheet.withCharts(charts);
       }
+      if (charts.length > 0) sheet = sheet.withCharts(charts);
 
       sheets.push(sheet);
       positions.push(position);
-      i++;
     }
 
     const meta = this.parseDocProps(getText("docProps/core.xml"));
@@ -144,8 +154,8 @@ export class XlsxReader {
 /**
  * The described sheet that opens: the first `<workbookView>`'s `activeTab`,
  * clamped to the `<sheet>` elements workbook.xml lists. Absent, or anything but
- * a non-negative integer, is the default, 0. An active sheet the reader skipped
- * (its part is missing) falls back to the first described sheet. Mirrors PHP
+ * a non-negative integer, is the default, 0. A tab no described sheet sits at
+ * falls back to the first described sheet. Mirrors PHP
  * `XlsxReader::activeSheet` (CC-fancy-0050).
  */
 function activeSheet(workbook: XmlNode, positions: number[], lastPosition: number): number {
@@ -162,15 +172,4 @@ function activeSheet(workbook: XmlNode, positions: number[], lastPosition: numbe
   }
   const index = positions.indexOf(tab);
   return index < 0 ? 0 : index;
-}
-
-function resolveRelativePath(base: string, target: string): string {
-  const baseDir = base.includes("/") ? base.slice(0, base.lastIndexOf("/")) : ".";
-  const combined = baseDir + "/" + target;
-  const parts: string[] = [];
-  for (const segment of combined.split("/")) {
-    if (segment === "..") parts.pop();
-    else if (segment !== "" && segment !== ".") parts.push(segment);
-  }
-  return parts.join("/");
 }

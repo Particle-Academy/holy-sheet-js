@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Agent, HolySheet, unzipSync } from "../src";
+import { Agent, HolySheet, MissingPartException, unzipSync } from "../src";
 
 /**
  * CC-fancy-0050: read() names the workbook's active sheet, the writer emits it
@@ -63,6 +63,19 @@ describe("active sheet + formulas option (shared cases)", () => {
     it(`reads: ${c.name}`, () => {
       const schema = Agent.read(fixture(c.file), c.options);
       expect(schema["activeSheet"] ?? null).toEqual(c.activeSheet);
+    });
+  }
+
+  for (const c of CASES.readRaises) {
+    it(`raises: ${c.name}`, () => {
+      let error: unknown;
+      try {
+        Agent.read(fixture(c.file), c.options);
+      } catch (e) {
+        error = e;
+      }
+      expect(error).toBeInstanceOf(MissingPartException);
+      expect((error as MissingPartException).part).toBe(c.part);
     });
   }
 
