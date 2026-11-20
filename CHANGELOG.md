@@ -55,6 +55,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Installing from a git ref now works.** `dist/` is not committed, and npm
+  builds a git dependency only through `prepare`, which this package did not
+  have, so `npm install github:Particle-Academy/holy-sheet-js#<ref>` installed
+  a package with no `dist/index.js` and every import failed with
+  `ERR_MODULE_NOT_FOUND`. `prepare` now runs the build. Installs from npm were
+  never affected; nothing to do.
 - **Docs: an `.xlsm` is read; only an `.xltm` is refused.** The agent guide
   called an `.xlsm` a "macro-enabled template" that is "refused, never read".
   `read()` reads an `.xlsm` workbook's values and ignores its macros, as this
